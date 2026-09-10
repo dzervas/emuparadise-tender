@@ -5,15 +5,19 @@ import zipfile
 from dataclasses import replace
 from unittest.mock import Mock
 
+import pytest
 from models.content_provider import CatalogueEntry, DownloadPlan
 
 from adapters.public_catalogue.router import ContentApiRouter
 from domain.provider_identity import PUBLIC_ID_START
 
 
-async def test_public_import_download_and_delete_preserves_other_files(harness):
+@pytest.mark.parametrize("srm_owned", [False, True])
+async def test_public_import_download_and_delete_preserves_other_files(harness, srm_owned):
     plugin = harness.plugin
     catalogue = plugin._catalogue_service
+    catalogue._config = replace(catalogue._config, shortcut_owner="srm" if srm_owned else "tender")
+    plugin._download_service._install_recorder._external_shortcuts = srm_owned
     entry = CatalogueEntry(
         "emuparadise",
         "homebrew-1",
@@ -51,10 +55,10 @@ async def test_public_import_download_and_delete_preserves_other_files(harness):
     assert imported["success"], imported
     rom_id = imported["rom_id"]
     assert rom_id >= PUBLIC_ID_START
-    assert (await plugin.bind_catalogue_shortcut(rom_id, 123456789))["success"]
+    assert (await plugin.bind_catalogue_shortcut(rom_id, 123456789))["success"] is not srm_owned
     again = await plugin.import_catalogue_entry(entry.page_url, "romspedia", plan.page_url)
     assert again["rom_id"] == rom_id
-    assert again["app_id"] == 123456789
+    assert again["app_id"] == (None if srm_owned else 123456789)
     root = plugin._retrodeck_paths.roms_path()
     os.makedirs(os.path.join(root, "gb"), exist_ok=True)
     other = os.path.join(root, "gb", "Other.gb")
@@ -67,6 +71,8 @@ async def test_public_import_download_and_delete_preserves_other_files(harness):
     assert installed, plugin._download_service.get_download_queue()
     assert os.path.commonpath([installed["file_path"], os.path.join(root, "gb")]) == os.path.join(root, "gb")
     assert os.path.isfile(installed["file_path"])
+    listed = await plugin.list_catalogue_entries()
+    assert any(item["rom_id"] == rom_id and item["installed"] for item in listed["items"])
     removed = await plugin.remove_rom(rom_id)
     assert removed["success"], removed
     assert not os.path.exists(installed["file_path"])
@@ -74,7 +80,7 @@ async def test_public_import_download_and_delete_preserves_other_files(harness):
         assert file.read() == b"untouched"
     assert plugin._download_service.get_installed_rom(rom_id) is None
     with catalogue._config.uow_factory() as uow:
-        assert uow.roms.get(rom_id).shortcut_app_id == 123456789
+        assert uow.roms.get(rom_id).shortcut_app_id == (None if srm_owned else 123456789)
 
 
 async def test_installation_change_requires_restart_before_new_downloads(harness):

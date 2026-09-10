@@ -292,6 +292,7 @@ def wire_services(cfg: WiringConfig) -> dict[str, Any]:
 
     rom_install_recorder = RomInstallRecorder(
         config=RomInstallRecorderConfig(
+            external_shortcuts=cfg.adapters.shortcut_owner == "srm",
             logger=cfg.runtime.logger,
             clock=cfg.runtime.clock,
             uow_factory=cfg.callbacks.uow_factory,
@@ -594,6 +595,8 @@ def wire_services(cfg: WiringConfig) -> dict[str, Any]:
 
     catalogue_service = CatalogueService(
         config=CatalogueServiceConfig(
+            romm=cfg.adapters.romm_api,
+            shortcut_owner=cfg.adapters.shortcut_owner,
             catalogue=cfg.adapters.public_catalogue,
             resolve_system=cfg.adapters.resolve_system,
             sources=cfg.adapters.public_sources,

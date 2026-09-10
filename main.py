@@ -16,7 +16,7 @@ from bootstrap import (
     wire_services,
 )
 
-from lib.installation_gate import installation_restart_blocked
+from lib.installation_gate import installation_restart_blocked, srm_update_blocked
 from lib.migration_gate import migration_blocked
 from lib.prune_gate import (
     acquire_prune_conflict_lease,
@@ -134,6 +134,7 @@ class Plugin:
         # RetroDECK path resolver — held directly so the get_retrodeck_status
         # callable can read the resolution health without routing through a
         # service (it's a pure adapter read, no orchestration).
+        self._srm = result.handles.srm
         self._retrodeck_paths = result.callbacks.retrodeck_paths
 
         # ── 4. Wire services ────────────────────────────────────────────────
@@ -433,16 +434,19 @@ class Plugin:
 
     @migration_blocked
     @installation_restart_blocked
+    @srm_update_blocked
     async def download_all_firmware(self, platform_slug):
         return await self._firmware_service.download_all_firmware(platform_slug)
 
     @migration_blocked
     @installation_restart_blocked
+    @srm_update_blocked
     async def download_required_firmware(self, platform_slug):
         return await self._firmware_service.download_required_firmware(platform_slug)
 
     @migration_blocked
     @installation_restart_blocked
+    @srm_update_blocked
     async def download_platform_firmware_file(self, platform_slug, file_name):
         return await self._firmware_service.download_platform_firmware_file(platform_slug, file_name)
 
@@ -505,7 +509,14 @@ class Plugin:
 
     @migration_blocked
     @prune_active_blocked
+    @srm_update_blocked
     async def start_sync(self):
+        if getattr(self, "_srm", None) is not None and self._srm.enabled:
+            return {
+                "success": False,
+                "reason": "srm_managed",
+                "message": "Import RomM games from Catalogue; SRM owns EmuDeck shortcuts",
+            }
         return self._sync_service.start_sync()
 
     async def cancel_sync(self, run_id):
@@ -521,7 +532,14 @@ class Plugin:
 
     @migration_blocked
     @prune_active_blocked
+    @srm_update_blocked
     async def sync_apply_delta(self, preview_id):
+        if getattr(self, "_srm", None) is not None and self._srm.enabled:
+            return {
+                "success": False,
+                "reason": "srm_managed",
+                "message": "Import RomM games from Catalogue; SRM owns EmuDeck shortcuts",
+            }
         return await self._sync_service.sync_apply_delta(preview_id)
 
     async def sync_cancel_preview(self):
@@ -659,6 +677,7 @@ class Plugin:
     @migration_blocked
     @prune_active_blocked
     @installation_restart_blocked
+    @srm_update_blocked
     async def start_download(
         self, rom_id, replace_existing=False, candidate_path=None, collision_choice=None, page_saw_candidate=False
     ):
@@ -683,6 +702,7 @@ class Plugin:
     @migration_blocked
     @prune_active_blocked
     @installation_restart_blocked
+    @srm_update_blocked
     async def adopt_existing_rom(self, rom_id, candidate_path=None, collision_choice=None):
         """Record content already on disk as this ROM's install, without downloading.
 
@@ -719,6 +739,7 @@ class Plugin:
     @migration_blocked
     @prune_active_blocked
     @installation_restart_blocked
+    @srm_update_blocked
     async def resume_download(self, rom_id):
         result = await self._download_service.resume_download(rom_id)
         task = self._download_service.task_for_rom(int(rom_id)) if result.get("success") else None
@@ -737,6 +758,7 @@ class Plugin:
 
     @migration_blocked
     @prune_active_blocked
+    @srm_update_blocked
     async def remove_rom(self, rom_id):
         result = await self._rom_removal_service.remove_rom(rom_id)
         if result.get("success"):
@@ -1074,6 +1096,7 @@ class Plugin:
     @migration_blocked
     @prune_active_blocked
     @installation_restart_blocked
+    @srm_update_blocked
     async def import_catalogue_entry(self, catalogue_url: str, provider: str, download_url: str) -> dict[str, Any]:
         return await self._catalogue_service.import_entry(catalogue_url, provider, download_url)
 
@@ -1089,6 +1112,7 @@ class Plugin:
     @migration_blocked
     @prune_active_blocked
     @sync_active_blocked
+    @srm_update_blocked
     async def save_emulator_installation(self, selection: str) -> dict[str, Any]:
         queue = self._download_service.get_download_queue()["downloads"]
         if self._download_service.active_download_rom_ids() or any(
@@ -1103,3 +1127,47 @@ class Plugin:
         if result["success"]:
             self._installation_restart_required = result.get("restart_required", False)
         return result
+
+    @migration_blocked
+    async def list_catalogue_entries(self) -> dict[str, Any]:
+        return await self._catalogue_service.list_entries()
+
+    @migration_blocked
+    async def get_srm_status(self) -> dict[str, Any]:
+        return await asyncio.get_running_loop().run_in_executor(None, self._srm.status)
+
+    @migration_blocked
+    @prune_active_blocked
+    @sync_active_blocked
+    @installation_restart_blocked
+    @srm_update_blocked
+    async def update_srm_library(self) -> dict[str, Any]:
+        if getattr(self, "_srm_mutations", 0) > 1:
+            return {
+                "success": False,
+                "reason": "operations_active",
+                "message": "Wait for ongoing imports or file operations to finish",
+            }
+        queue = self._download_service.get_download_queue()["downloads"]
+        if self._download_service.active_download_rom_ids() or any(
+            item["status"] not in ("completed", "failed", "cancelled") for item in queue
+        ):
+            return {"success": False, "reason": "downloads_active", "message": "Finish or cancel downloads first"}
+        self._srm_starting = True
+        try:
+            if await self._catalogue_service.has_bound_shortcuts():
+                return {
+                    "success": False,
+                    "reason": "shortcuts_owned",
+                    "message": "Remove existing Tender-managed shortcuts before handing this library to SRM",
+                }
+            return await asyncio.get_running_loop().run_in_executor(None, self._srm.start)
+        finally:
+            self._srm_starting = False
+
+    @migration_blocked
+    @prune_active_blocked
+    @installation_restart_blocked
+    @srm_update_blocked
+    async def import_romm_catalogue_entry(self, rom_id: int) -> dict[str, Any]:
+        return await self._catalogue_service.import_romm(rom_id)

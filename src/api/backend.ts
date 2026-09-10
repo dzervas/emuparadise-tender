@@ -1251,6 +1251,7 @@ export interface CatalogueInspection {
   system?: string;
 }
 export interface CatalogueImport {
+  shortcut_owner?: "tender" | "srm";
   success: boolean;
   message?: string;
   rom_id?: number;
@@ -1263,3 +1264,22 @@ export const bindCatalogueShortcut = callable<[number, number], BackendResult>("
 
 export const getEmulatorInstallation = callable<[], { selection: string }>("get_emulator_installation");
 export const saveEmulatorInstallation = callable<[string], BackendResult>("save_emulator_installation");
+
+export interface SrmStatus {
+  enabled: boolean;
+  ready: boolean;
+  busy: boolean;
+  message?: string;
+  job?: { status: string; message: string };
+}
+export interface CatalogueItem {
+  rom_id: number;
+  name: string;
+  installed: boolean;
+}
+export const getSrmStatus = callable<[], SrmStatus>("get_srm_status");
+export const updateSrmLibrary = callable<[], BackendResult>("update_srm_library");
+export const listCatalogueEntries = callable<[], { success: boolean; items: CatalogueItem[] }>(
+  "list_catalogue_entries",
+);
+export const importRommCatalogueEntry = callable<[number], CatalogueImport>("import_romm_catalogue_entry");

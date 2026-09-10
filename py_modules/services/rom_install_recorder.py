@@ -53,12 +53,14 @@ class RomInstallRecorderConfig:
     system_extensions: SystemSupportedExtensionsFn
     active_core: ActiveCoreReader
     disc_resolver: DiscResolver
+    external_shortcuts: bool = False
 
 
 class RomInstallRecorder:
     """Writes the ``rom_installs`` row an install is, and the bake behind it."""
 
     def __init__(self, *, config: RomInstallRecorderConfig) -> None:
+        self._external_shortcuts = config.external_shortcuts
         self._logger = config.logger
         self._clock = config.clock
         self._uow_factory = config.uow_factory
@@ -93,7 +95,9 @@ class RomInstallRecorder:
         # its row, and only the shortcut's launch command is withheld. Refusing
         # the install instead would delete a package the user's remaining option
         # is to install by hand in the emulator (#1582, #1652).
-        launchable = is_launchable_target(file_path, rom_dir, self._system_extensions(system))
+        launchable = not self._external_shortcuts and is_launchable_target(
+            file_path, rom_dir, self._system_extensions(system)
+        )
         if not launchable:
             self._logger.warning(f"No launch target for rom_id={rom_id}: {system} cannot launch '{file_path}'")
         try:
@@ -136,6 +140,8 @@ class RomInstallRecorder:
         pin both live on ``roms`` so they survive uninstall → reinstall, and
         every route back to an installed ROM goes through here.
         """
+        if self._external_shortcuts:
+            return None, ""
         with self._uow_factory() as uow:
             rom = uow.roms.get(int(rom_id))
             install = uow.rom_installs.get(int(rom_id))

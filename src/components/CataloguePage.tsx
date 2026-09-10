@@ -12,6 +12,7 @@ import {
 } from "../api/backend";
 import type { CatalogueInspection } from "../api/backend";
 import { addShortcut } from "../utils/steamShortcuts";
+import { EmudeckLibrary } from "./EmudeckLibrary";
 import { registerRomMAppId } from "../patches/gameDetailPatch";
 
 export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
@@ -21,6 +22,7 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
   const [provider, setProvider] = useState("romspedia");
   const [inspection, setInspection] = useState<CatalogueInspection | null>(null);
   const [romId, setRomId] = useState<number | null>(null);
+  const [libraryRevision, setLibraryRevision] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   useEffect(() => {
@@ -59,6 +61,12 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
     run(async () => {
       const result = await importCatalogueEntry(catalogueUrl, provider, downloadUrl);
       if (!result.success || !result.rom_id || !result.shortcut) throw new Error(result.message || "Import failed");
+      if (result.shortcut_owner === "srm") {
+        setRomId(result.rom_id);
+        setLibraryRevision((value) => value + 1);
+        setMessage("Imported. Download the ROM, then update your Steam library below.");
+        return;
+      }
       let appId = result.app_id;
       if (!appId) {
         appId = await addShortcut(result.shortcut);
@@ -115,6 +123,7 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
+      <EmudeckLibrary revision={libraryRevision} />
       <PanelSection title="EmuParadise catalogue">
         <PanelSectionRow>
           <TextField

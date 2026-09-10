@@ -15,3 +15,28 @@ def installation_restart_blocked(method):
         return await method(self, *args, **kwargs)
 
     return wrapper
+
+
+def srm_update_blocked(method):
+    @functools.wraps(method)
+    async def wrapper(self, *args, **kwargs):
+        import asyncio
+
+        srm = getattr(self, "_srm", None)
+        if (
+            srm is not None
+            and srm.enabled
+            and (
+                getattr(self, "_srm_starting", False)
+                or await asyncio.get_running_loop().run_in_executor(None, srm.busy)
+                or getattr(self, "_srm_starting", False)
+            )
+        ):
+            return {"success": False, "reason": "srm_busy", "message": "Wait for the Steam library update to finish"}
+        self._srm_mutations = getattr(self, "_srm_mutations", 0) + 1
+        try:
+            return await method(self, *args, **kwargs)
+        finally:
+            self._srm_mutations -= 1
+
+    return wrapper

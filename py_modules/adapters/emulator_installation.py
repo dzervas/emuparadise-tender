@@ -81,11 +81,14 @@ class EmulatorInstallationAdapter:
     def validate_system(self, system: str) -> None:
         if self.kind != "emudeck":
             return
-        answer = self._emudeck().rom_location(system)
-        directory = answer.dir
-        expected = os.path.realpath(os.path.join(self.roms_path(), system))
-        if not directory or os.path.realpath(directory) != expected:
-            raise ValueError("The EmuDeck system directory is unavailable or uses an unsupported custom location")
+        if not re.fullmatch(r"[a-z0-9_-]+", system):
+            raise ValueError("Invalid EmuDeck system folder")
+        root = self.roms_path()
+        if root != os.path.realpath(os.path.join(self.retrodeck_home(), "roms")):
+            raise ValueError("EmuDeck and ES-DE ROM roots differ; align them before downloading")
+        directory = os.path.realpath(os.path.join(root, system))
+        if os.path.dirname(directory) != root or not os.path.isdir(directory):
+            raise ValueError("Create this system's ROM folder through EmuDeck first")
 
     def host_command(self, command: str) -> str:
         rules_path = os.path.join(self._home, "ES-DE", "custom_systems", "es_find_rules.xml")

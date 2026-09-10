@@ -33,6 +33,7 @@ vi.mock("../api/backend", () => ({
   startDownload: vi.fn(),
   removeRom: vi.fn(),
 }));
+vi.mock("./EmudeckLibrary", () => ({ EmudeckLibrary: () => null }));
 vi.mock("../utils/steamShortcuts", () => ({ addShortcut: vi.fn() }));
 vi.mock("../patches/gameDetailPatch", () => ({ registerRomMAppId: vi.fn() }));
 
@@ -88,4 +89,14 @@ describe("catalogue import", () => {
     expect(screen.queryByText("Import Homebrew")).toBeNull();
     expect(importCatalogueEntry).not.toHaveBeenCalled();
   });
+});
+
+it("leaves EmuDeck shortcuts and artwork to SRM", async () => {
+  const result = await vi.mocked(importCatalogueEntry).getMockImplementation()!("", "", "");
+  vi.mocked(importCatalogueEntry).mockResolvedValue({ ...result, shortcut_owner: "srm" });
+  fireEvent.click(await inspect());
+  await screen.findByText("Imported. Download the ROM, then update your Steam library below.");
+  expect(addShortcut).not.toHaveBeenCalled();
+  expect(bindCatalogueShortcut).not.toHaveBeenCalled();
+  expect(SteamClient.Apps.SetCustomArtworkForApp).not.toHaveBeenCalled();
 });

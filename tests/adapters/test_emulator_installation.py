@@ -29,10 +29,9 @@ def test_emudeck_uses_selected_configured_root(monkeypatch, tmp_path):
     assert adapter.roms_path() == str(root / "roms")
     assert adapter.bios_path() == str(root / "bios")
     adapter.validate_system("gb")
-    monkeypatch.setattr(
-        adapter.choose(), "rom_location", lambda system: SimpleNamespace(dir=str(tmp_path / "elsewhere"))
-    )
-    with pytest.raises(ValueError, match="custom location"):
+    (root / "roms" / "gb").rmdir()
+    (root / "roms" / "gb").symlink_to(tmp_path, target_is_directory=True)
+    with pytest.raises(ValueError, match="system's ROM folder"):
         adapter.validate_system("gb")
 
 

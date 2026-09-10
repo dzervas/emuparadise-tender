@@ -18,6 +18,7 @@ if TYPE_CHECKING:
         CatalogueSourceStore,
         Clock,
         DownloadResolverReader,
+        RomDetailReader,
         SystemResolver,
         UnitOfWorkFactory,
     )
@@ -33,6 +34,8 @@ class CatalogueServiceConfig:
     clock: Clock
     loop: asyncio.AbstractEventLoop
     plugin_dir: str
+    shortcut_owner: str = "tender"
+    romm: RomDetailReader | None = None
 
 
 class CatalogueService:
@@ -100,7 +103,13 @@ class CatalogueService:
                 uow.rom_metadata.save(rom_id, build_rom_metadata(detail, self._config.clock.time()))
             app_id = rom.shortcut_app_id
         shortcut = build_shortcuts_data([detail], self._config.plugin_dir, {}, {})[0]
-        return {"success": True, "rom_id": rom_id, "app_id": app_id, "shortcut": shortcut}
+        return {
+            "success": True,
+            "rom_id": rom_id,
+            "app_id": app_id,
+            "shortcut": shortcut,
+            "shortcut_owner": self._config.shortcut_owner,
+        }
 
     async def bind_shortcut(self, rom_id: int, app_id: int) -> dict[str, Any]:
         try:
@@ -110,6 +119,8 @@ class CatalogueService:
             return {"success": False, "reason": "shortcut_bind_failed", "message": str(exc)}
 
     def _bind_io(self, rom_id: int, app_id: int) -> None:
+        if self._config.shortcut_owner == "srm":
+            raise ValueError("Steam ROM Manager owns EmuDeck shortcuts")
         if self._config.sources.get(rom_id) is None:
             raise ValueError("Unknown catalogue item")
         with self._config.uow_factory() as uow:
@@ -123,3 +134,53 @@ class CatalogueService:
                 raise ValueError("This Steam shortcut already belongs to another catalogue item")
             rom.bind_shortcut(app_id)
             uow.roms.save(rom)
+
+    async def list_entries(self) -> dict[str, Any]:
+        return await self._config.loop.run_in_executor(None, self._list_io)
+
+    def _list_io(self) -> dict[str, Any]:
+        with self._config.uow_factory() as uow:
+            return {
+                "success": True,
+                "items": [
+                    {"rom_id": rom.rom_id, "name": rom.name, "installed": uow.rom_installs.get(rom.rom_id) is not None}
+                    for rom in uow.roms.iter_all()
+                ],
+            }
+
+    async def import_romm(self, rom_id: int) -> dict[str, Any]:
+        try:
+            return await self._config.loop.run_in_executor(None, self._import_romm_io, rom_id)
+        except Exception as exc:
+            return {"success": False, "reason": "import_failed", "message": str(exc)}
+
+    def _import_romm_io(self, rom_id: int) -> dict[str, Any]:
+        from domain.provider_identity import is_public_id
+
+        if self._config.shortcut_owner != "srm" or self._config.romm is None:
+            raise ValueError("Use RomM library sync for RetroDECK")
+        if rom_id <= 0 or is_public_id(rom_id):
+            raise ValueError("Enter a valid RomM ROM ID")
+        detail = self._config.romm.get_rom(rom_id)
+        system = self._config.resolve_system(detail["platform_slug"], detail.get("platform_fs_slug"))
+        with self._config.uow_factory() as uow:
+            if uow.roms.get(rom_id) is None:
+                uow.roms.save(
+                    Rom.synced(
+                        rom_id=rom_id,
+                        platform_slug=system,
+                        name=detail["name"],
+                        fs_name=detail["fs_name"],
+                        shortcut_app_id=None,
+                        synced_at=self._config.clock.now().isoformat(),
+                    )
+                )
+                uow.rom_metadata.save(rom_id, build_rom_metadata(detail, self._config.clock.time()))
+        return {"success": True, "rom_id": rom_id}
+
+    async def has_bound_shortcuts(self) -> bool:
+        return await self._config.loop.run_in_executor(None, self._has_bound_io)
+
+    def _has_bound_io(self) -> bool:
+        with self._config.uow_factory() as uow:
+            return any(rom.shortcut_app_id is not None for rom in uow.roms.iter_all())

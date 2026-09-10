@@ -139,7 +139,7 @@ these touched paths against evidence; avoid unrelated rewrites based on assumpti
 about how the original project was authored.
 
 The fork's CI is manually dispatched for releases only: build/package Tender and
-attach the installable ZIP to a draft release. Pushes and PRs do not trigger it.
+bump patch/minor/major, commit and tag the version, and publish the installable ZIP. Pushes and PRs do not trigger it.
 Remove release-please, SonarCloud, Pages publishing and issue/PR automation.
 No external service secrets should be required. Keep packaging checks for the Python
 backend, migrations, vendored resolver/native library and executable launcher.
@@ -161,13 +161,9 @@ a successful Rollup build is not evidence those device behaviors were tested.
 - Public transfers support ZIP files, reject HTML and executable responses before
   opening the destination, detect incomplete transfers, and disable unverified
   range resume. Existing extraction and path-ownership checks still apply.
-- EmuDeck launch resolution reads installed `~/ES-DE/custom_systems/es_find_rules.xml`
-  static launcher/core paths and checks they exist. It quotes arguments without
-  executing third-party page scripts or sourcing settings during discovery.
-  Complex ES-DE placeholders and unreadable/sealed system catalogues are refused.
-  Custom system locations differing from `ROMDirectory/system` are also refused,
-  rather than downloading into a guessed folder. This is configured-system support,
-  not complete compatibility with every stock EmuDeck AppImage installation.
+- EmuDeck uses SRM-owned shortcuts and the guarded Game Mode restart worker described
+  below. Downloads require matching EmuDeck/ES-DE ROM roots and an existing system
+  directory, but no longer require Tender to reconstruct emulator commands.
 - RomM save sync remains specific to RomM content. Public games keep local playtime
   without queuing it for RomM, and retain local saves on uninstall. EmuDeck save-sync
   layouts are not validated by this change; RetroDECK's existing save integration
@@ -187,3 +183,27 @@ a successful Rollup build is not evidence those device behaviors were tested.
   workflow itself was not enabled or dispatched, and no release was published.
 - Runtime here was Python 3.12 and Node 24. Decky's Python 3.11, actual Steam input
   focus and emulator processes still need a Steam Deck check.
+
+
+## EmuDeck SRM handoff
+
+EmuDeck now assigns shortcut ownership to SRM; public imports remain unbound and
+completed downloads skip Tender's launch-option bake. A persistent Catalogue list
+owns file-management access. Explicit RomM-ID imports use the same unbound model;
+legacy bulk shortcut sync is blocked for EmuDeck. RetroDECK behavior is unchanged.
+
+The restart worker is detached from Decky using a system transient service running
+as the Steam user. It controls only a recognized active Game Mode user service,
+checks Steam has exited before the SRM write, isolates Electron with Xvfb, terminates
+the writer process group on timeout, and attempts to restart the same session in a
+finally block. Preflight refusals do not stop Steam. This boundary is deliberately
+experimental pending hardware testing; exact prerequisites and recovery limitations
+are in the catalogue user guide. SRM still owns parser selection, exclusions, matching,
+artwork and its known empty-parser deletion behavior.
+
+
+SRM follow-up validation: 119 focused backend checks and 6 frontend checks passed,
+including unbound installation/deletion, preflight refusals, restart confirmation,
+writer timeout cleanup, and session recovery failures. Frozen dependency installation,
+frontend compilation, and the 362-file ZIP validation passed locally. No GitHub
+workflow was dispatched and no real Steam session was stopped during these checks.

@@ -62,6 +62,7 @@ from adapters.sgdb_artwork_cache import SgdbArtworkCacheAdapter
 from adapters.sqlite_migrations import MIGRATIONS_DIR, apply_migrations
 from adapters.steam_config import SteamConfigAdapter
 from adapters.steam_recovery import SteamRecoveryAdapter
+from adapters.steam_rom_manager import SteamRomManagerAdapter
 from adapters.steamgriddb import SteamGridDbAdapter
 from adapters.system_clock import SystemClock
 from adapters.system_uuid_gen import SystemUuidGen
@@ -173,6 +174,7 @@ class AdapterBundle:
     prune_artifacts: PruneArtifactStore
     steam_recovery: SteamRecoveryStore
     data_location_store: DataLocationStore
+    shortcut_owner: str = "tender"
     available_installations: tuple[str, ...] = ("auto", "retrodeck")
 
 
@@ -259,6 +261,7 @@ class BootstrapHandles:
 
     debug_logger: DebugLogger
     persistence: PersistenceAdapter
+    srm: SteamRomManagerAdapter
 
 
 @dataclass(frozen=True)
@@ -490,9 +493,6 @@ def bootstrap(
         system = http_adapter.resolve_system(platform_slug, platform_fs_slug)
         if retrodeck_paths.kind == "emudeck":
             retrodeck_paths.validate_system(system)
-            emulator = emulator_catalogue.get_default_emulator(system)
-            if emulator is None or emulator.kind == "unavailable":
-                raise ValueError("Configure this system's EmuDeck launcher before downloading")
         return system
 
     adapters = AdapterBundle(
@@ -500,6 +500,7 @@ def bootstrap(
         romm_api=cast("RommApi", romm_api),
         resolve_system=resolve_system,
         available_installations=retrodeck_paths.available,
+        shortcut_owner="srm" if retrodeck_paths.kind == "emudeck" else "tender",
         public_catalogue=public_catalogue,
         public_sources=public_sources,
         download_resolvers=download_resolvers,
@@ -554,7 +555,11 @@ def bootstrap(
         hostname_provider=hostname_provider,
         machine_id_provider=machine_id_provider,
     )
-    handles = BootstrapHandles(debug_logger=debug_logger, persistence=persistence)
+    handles = BootstrapHandles(
+        debug_logger=debug_logger,
+        persistence=persistence,
+        srm=SteamRomManagerAdapter(installation=retrodeck_paths, user_home=user_home, data_dir=locations.data_dir),
+    )
 
     return BootstrapResult(
         adapters=adapters,
