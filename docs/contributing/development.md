@@ -2,6 +2,23 @@
 
 Guide for setting up a development environment and contributing to Tender.
 
+## This fork's CI
+
+`dzervas/emuparadise-tender` runs one **Build plugin** workflow on pushes to main,
+pull requests targeting main, and manual dispatch. It uses the pinned Decky CLI to
+build/package the plugin and uploads a `Tender-<commit>` artifact containing
+`Tender.zip`. Download and unpack the GitHub artifact wrapper to obtain the plugin
+ZIP for Decky installation. No releases or documentation sites are published.
+
+The archive check verifies required runtime payloads, the executable launcher and
+plugin identity, and rejects unsafe paths and source maps. Tests, coverage, format
+checks and architecture gates remain available locally but are not automatic jobs
+in this fork. Upstream release-please, SonarCloud and issue/PR automation have been
+removed; no upstream service secrets are required.
+
+Provider and EmuDeck runtime changes are still proposed in the
+[architecture/refactor note](../architecture/content-providers.md).
+
 ## Prerequisites
 
 - [mise](https://mise.jdx.dev/) — manages Node, pnpm, and Python versions
