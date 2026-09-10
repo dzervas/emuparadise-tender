@@ -1,6 +1,7 @@
 # Content providers and emulator installations
 
-Status: proposed, before implementation. Inspected upstream commit
+Status: implemented in this fork; Steam Deck validation remains outstanding.
+The original proposal preceded code changes and inspected upstream commit
 `54494b5faa1732ba593751ff0062d9df362e98d3` (Tender 0.32.0).
 
 ## Existing architecture
@@ -26,12 +27,12 @@ it deliberately retains saves, playtime and the shortcut. Removing a Steam short
 is a separate operation. Provider identity must therefore survive catalogue refresh,
 disconnect, restart and uninstall.
 
-## Proposed provider boundary
+## Implemented provider boundary
 
 Separate content source from emulator installation. RomM and EmuParadise describe
 content; EmuDeck and RetroDECK determine where it belongs and how it launches.
 
-Introduce small protocol surfaces for catalogue browsing, item detail, download
+Use small protocol surfaces for catalogue browsing, item detail, download
 resolution/transfer and cover retrieval. Providers return normalized item data and
 explicit availability, not HTML disguised as a ROM or fabricated filenames. Keep
 collections and timestamp-based incremental fetch as optional capabilities. Do not
@@ -39,19 +40,23 @@ make a new provider emulate RomM authentication, save sync, firmware, devices,
 playtime ingest or destructive entity-liveness proofs.
 
 Retain the current RomM adapter and its HTTP behavior. Route shared content reads
-through the new boundary, with an explicit registry selecting the correct source.
-Existing RomM integer IDs must remain stable. Persist a mapping from provider
-instance plus external ID to local identity for new sources; never hash external
-IDs into an unchecked collision space. Platform stamps, sibling groups, artwork,
+through `ContentApiRouter`, which retains the existing RomM adapter and delegates
+its extensions while refusing public IDs in RomM-only operations.
+Existing RomM integer IDs must remain stable. Persist `public_sources` mappings from catalogue plus external ID to local identity.
+New IDs are allocated monotonically in `2^52 .. 2^53-1`, inside JavaScript's exact
+integer range. Allocation checks existing ROM rows; RomM list responses using the
+reserved range are refused. IDs are never hashed. Platform stamps, sibling groups, artwork,
 download queues and retained rows must share that namespace. RomM-only operations
 must not receive another provider's local IDs.
 
-Add an on-demand catalogue browser to the existing controller-friendly UI. Do not
-bulk-sync a public catalogue's thousands of entries into Steam. A selected item uses
-the existing install and shortcut pipeline. Unavailable items remain browsable but
-cannot create a misleading installable shortcut.
+The controller-friendly Catalogue page imports one game at a time from explicit
+EmuParadise and download-provider game URLs. Inspection shows the title, platform
+and archive filename before import. This first version has no in-plugin site search
+or bulk catalogue sync. Public imports use the existing install and Steam shortcut
+pipeline, including artwork and Game Mode download/uninstall controls. RomM
+connectivity and save-sync gates do not block public games.
 
-## EmuParadise observations and unresolved download contract
+## Catalogue and download sources
 
 Inspected the public site on 2026-09-10. The
 [catalogue index](https://www.emuparadise.me/roms-isos-games.php) states that game
@@ -63,12 +68,28 @@ reaches a
 that says the game is unavailable. This proves neither that every item is unavailable
 nor that every Download link returns game bytes.
 
-A working public download example remains necessary to verify the final link,
-response type, archive format, filename, redirects and resume behavior. Follow only
-published download paths for authorized content. Do not reconstruct retired endpoints
-or infer availability from a link label. Separate browsing availability, file
-availability and distribution authorization; public visibility alone is not a license.
-No runtime implementation has been made while that contract remains unverified.
+The catalogue and download provider are independent choices. EmuParadise supplies
+metadata only. RomM retains its authenticated catalogue and byte transfer adapter;
+Romspedia and RomsDL resolve files from their public game pages. A selected source
+page is explicit: do not silently match titles across systems, revisions or regions.
+Catalogue identity survives changing the selected download source.
+
+Inspected public HTML on 2026-09-10: Romspedia's game page exposes a slow-download
+link, whose landing page publishes a direct HTTPS file link. RomsDL's game page
+publishes a POST download form with `rom_url`, `console_url` and a page-issued
+`session` field. Read fresh form values, never manufacture a session or a URL.
+Do not execute third-party JavaScript or follow advertisements. Source adapters must
+reject login/challenge/error pages, unexpected redirect origins and ambiguous links.
+A missing public path means unavailable, not permission to reconstruct an endpoint.
+
+The byte-transfer boundary is separate from catalogue detail. The existing install
+engine continues to own destination choice, occupancy checks, extraction, cancellation
+and install records. A download adapter receives a destination chosen by that engine;
+a remote filename never selects a local directory. Public HTTP uses its own transport
+without RomM credentials, and its failures never constitute RomM deletion authority.
+Resume requires a matching range response; HTML must never be installed as game bytes.
+Only publicly distributed, authorized content belongs in this workflow. Visibility
+and a site's cartridge-ownership disclaimer do not establish a distribution license.
 
 ## EmuDeck and RetroDECK
 
@@ -80,7 +101,11 @@ incomplete for EmuDeck: its directory adapter reads only RetroDECK configuration
 and the command renderer emits `flatpak run net.retrodeck.retrodeck`, even though
 the catalogue adapter may have selected EmuDeck. Detection alone is not support.
 
-Use explicit installation selection if both exist. Derive ROM and BIOS roots from
+The Catalogue page offers an installation choice. Auto prefers RetroDECK, then
+EmuDeck. Explicit selections require a detected installation. Changing the choice
+requires a restart and is refused while downloads, installed ROMs, BIOS records or
+save tracking remain; new installations are blocked until that restart. The
+migration service clears only empty-installation location markers when switching. Derive ROM and BIOS roots from
 that installation's configuration, including SD-card paths and symlinks. EmuDeck's
 `~/.config/EmuDeck/settings.sh` must be parsed as data, never sourced as shell code.
 Validate the chosen system's directory against the effective frontend configuration;
@@ -107,8 +132,8 @@ systems should explain the missing configuration before files are installed.
 
 ## Validation and delivery
 
-Use logical commits: this design, release-only CI, the provider seam preserving RomM,
-EmuParadise integration, and EmuDeck support with focused regression tests. Keep
+Use logical commits for the design, release-only CI, provider integration and
+installation support, with focused regression tests. Keep
 upstream tests and architecture tools available locally. Review deficiencies along
 these touched paths against evidence; avoid unrelated rewrites based on assumptions
 about how the original project was authored.
@@ -123,3 +148,42 @@ Run provider fixture tests, RomM compatibility tests, filesystem install/uninsta
 tests, frontend type checking and the frontend build locally during implementation.
 Real Steam/Decky controller focus and emulator launch behavior require a Steam Deck;
 a successful Rollup build is not evidence those device behaviors were tested.
+
+## Current boundaries and limitations
+
+- `CatalogueReader` returns descriptive entries; `DownloadResolverReader` resolves
+  a separately selected source page into an immutable `DownloadPlan`.
+- `RomDetailReader` and `RomDownloadReader` are independently injected into the
+  existing download engine. `RommRomReader` composes them for compatibility.
+- Public source bindings are pinned at first import. Re-importing the same entry
+  is idempotent; asking to rebind it to a different download page is explicitly
+  refused. Source rebinding is not implemented in this version.
+- Public transfers support ZIP files, reject HTML and executable responses before
+  opening the destination, detect incomplete transfers, and disable unverified
+  range resume. Existing extraction and path-ownership checks still apply.
+- EmuDeck launch resolution reads installed `~/ES-DE/custom_systems/es_find_rules.xml`
+  static launcher/core paths and checks they exist. It quotes arguments without
+  executing third-party page scripts or sourcing settings during discovery.
+  Complex ES-DE placeholders and unreadable/sealed system catalogues are refused.
+  Custom system locations differing from `ROMDirectory/system` are also refused,
+  rather than downloading into a guessed folder. This is configured-system support,
+  not complete compatibility with every stock EmuDeck AppImage installation.
+- RomM save sync remains specific to RomM content. Public games keep local playtime
+  without queuing it for RomM, and retain local saves on uninstall. EmuDeck save-sync
+  layouts are not validated by this change; RetroDECK's existing save integration
+  remains the established path.
+- Live checks resolved both sites' published download flows and EmuParadise metadata.
+  Binary transfer and install/delete tests use synthetic archives, not commercial ROMs.
+
+## Local validation (2026-09-10)
+
+- Pinned pnpm 10.29.3 frozen installation, TypeScript check and Rollup build passed.
+- Backend: 8,109 tests passed, one skipped; three Unix-socket filesystem tests were
+  excluded after the environment denied socket creation. Five subtests also passed.
+- Frontend: all 3,322 tests passed across 139 files.
+- Ruff, basedpyright, import boundaries, callable parity, aggregate ownership,
+  module-size and vendored-tree checks passed.
+- The actual 360-file plugin ZIP passed the release packager's validation. The
+  workflow itself was not enabled or dispatched, and no release was published.
+- Runtime here was Python 3.12 and Node 24. Decky's Python 3.11, actual Steam input
+  focus and emulator processes still need a Steam Deck check.
