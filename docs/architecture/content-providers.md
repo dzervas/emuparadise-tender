@@ -107,14 +107,15 @@ systems should explain the missing configuration before files are installed.
 
 ## Validation and delivery
 
-Use logical commits: this design, build-only CI, the provider seam preserving RomM,
+Use logical commits: this design, release-only CI, the provider seam preserving RomM,
 EmuParadise integration, and EmuDeck support with focused regression tests. Keep
 upstream tests and architecture tools available locally. Review deficiencies along
 these touched paths against evidence; avoid unrelated rewrites based on assumptions
 about how the original project was authored.
 
-The fork's automatic CI should only build/package Tender and upload an installable
-ZIP. Remove release-please, SonarCloud, Pages publishing and issue/PR automation.
+The fork's CI is manually dispatched for releases only: build/package Tender and
+attach the installable ZIP to a draft release. Pushes and PRs do not trigger it.
+Remove release-please, SonarCloud, Pages publishing and issue/PR automation.
 No external service secrets should be required. Keep packaging checks for the Python
 backend, migrations, vendored resolver/native library and executable launcher.
 

@@ -2,19 +2,42 @@
 
 Guide for setting up a development environment and contributing to Tender.
 
-## This fork's CI
+## This fork's release workflow
 
-`dzervas/emuparadise-tender` runs one **Build plugin** workflow on pushes to main,
-pull requests targeting main, and manual dispatch. It uses the pinned Decky CLI to
-build/package the plugin and uploads a `Tender-<commit>` artifact containing
-`Tender.zip`. Download and unpack the GitHub artifact wrapper to obtain the plugin
-ZIP for Decky installation. No releases or documentation sites are published.
+`dzervas/emuparadise-tender` has one manually dispatched **Draft plugin release**
+workflow. Pushes, tags and pull requests do not trigger it. Once Actions is enabled,
+select the commit/branch to release, enter a release tag and run the workflow. It
+builds Tender and creates a **draft GitHub release** containing `Tender.zip`; review
+and publish that draft separately. It never overwrites an existing release or moves
+an existing tag. A tag pointing at another commit is refused.
 
-The archive check verifies required runtime payloads, the executable launcher and
-plugin identity, and rejects unsafe paths and source maps. Tests, coverage, format
-checks and architecture gates remain available locally but are not automatic jobs
-in this fork. Upstream release-please, SonarCloud and issue/PR automation have been
-removed; no upstream service secrets are required.
+The same build commands run locally, without Docker or Decky CLI:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm build
+python3 scripts/build_plugin_archive.py dist/Tender.zip
+```
+
+Use the pnpm version in `package.json` (10.29.3). The packager includes the compiled
+frontend, Python backend, migrations, vendored native library/resolver and executable
+launcher. It flattens `defaults/config.json` into `config.json` as Decky expects,
+keeps the top-level README, excludes source maps and Python caches, and validates the
+archive before replacing an existing ZIP. Packaging follows the runtime layout in
+[Decky CLI 0.0.8](https://github.com/SteamDeckHomebrew/cli/blob/0.0.8/src/cli/plugin/build.rs)
+without its Docker-based frontend build or duplicate defaults README entry.
+
+Run the focused packaging regressions locally with:
+
+```bash
+python3 tests/scripts/test_check_plugin_archive.py
+python3 tests/scripts/test_build_plugin_archive.py
+```
+
+Tests, coverage, format checks and architecture tools remain available locally.
+There are no automatic test jobs, release-please, SonarCloud, documentation publishing,
+or issue/PR automation in this fork. Only GitHub's built-in token is used, to create
+the draft release. The remote release creation step is not part of local validation.
 
 Provider and EmuDeck runtime changes are still proposed in the
 [architecture/refactor note](../architecture/content-providers.md).

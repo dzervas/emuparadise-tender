@@ -15,7 +15,7 @@ def validate_archive(archive: Path) -> None:
         "package.json",
         "dist/index.js",
         "bin/rom-launcher",
-        "defaults/config.json",
+        "config.json",
         "py_modules/bootstrap/__init__.py",
         "py_modules/bootstrap/adapters.py",
         "py_modules/bootstrap/services.py",
