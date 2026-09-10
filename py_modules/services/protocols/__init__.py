@@ -22,6 +22,7 @@ The package is organised topically — consumers always deep-import via
 
 from __future__ import annotations
 
+from services.protocols.content_provider import CatalogueReader, CatalogueSourceStore, DownloadResolverReader
 from services.protocols.cross_service import (
     AchievementsReader,
     ActiveCoreReader,
@@ -129,6 +130,8 @@ from services.protocols.repositories import (
     SyncRunRepository,
 )
 from services.protocols.transport import (
+    RomDetailReader,
+    RomDownloadReader,
     RommAchievementsApi,
     RommApi,
     RommConnectionApi,
@@ -158,6 +161,8 @@ __all__ = [
     "ArtworkRemover",
     "BiosChecker",
     "BiosFileRepository",
+    "CatalogueReader",
+    "CatalogueSourceStore",
     "Clock",
     "ComputeSyncActionFn",
     "CoreInfoProvider",
@@ -172,6 +177,7 @@ __all__ = [
     "DiscResolver",
     "DownloadFileStore",
     "DownloadQueueCleanup",
+    "DownloadResolverReader",
     "DownloadTargetGateFn",
     "EventEmitter",
     "FirmwareCacheRepository",
@@ -212,6 +218,8 @@ __all__ = [
     "RetroArchSavestateLayoutProvider",
     "RetroDeckPaths",
     "RetryStrategy",
+    "RomDetailReader",
+    "RomDownloadReader",
     "RomFileStore",
     "RomInstallRecorder",
     "RomInstallRepository",

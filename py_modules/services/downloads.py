@@ -1,10 +1,9 @@
 """DownloadService — ROM download orchestration.
 
 Owns every step between a frontend download request and a ROM
-landing on disk: disk-space pre-flight, single-file and multi-file
-downloads, ZIP extraction, and partial-download cleanup.
+landing on disk: disk-space pre-flight, transfer, extraction, and cleanup.
 Raw filesystem I/O flows through the ``DownloadFileStore`` Protocol;
-HTTP traffic flows through ``RommRomReader``.
+Catalogue detail and byte transfer have independent provider boundaries.
 """
 
 from __future__ import annotations
@@ -44,8 +43,9 @@ if TYPE_CHECKING:
         DownloadTargetGateFn,
         EventEmitter,
         RetroDeckPaths,
+        RomDetailReader,
+        RomDownloadReader,
         RomInstallRecorder,
-        RommRomReader,
         RomRemoverProvider,
         Sleeper,
         SystemM3uSupportFn,
@@ -54,11 +54,7 @@ if TYPE_CHECKING:
     )
 
 _DOWNLOAD_QUEUE_MAX_TERMINAL = 50
-# One wording for every way a download fails to get off the ground: the user
-# reads the same sentence whichever step raised.
 _START_FAILED_MESSAGE = "Failed to start download"
-# Said twice for a single refusal — once to the frontend as a failure frame,
-# once to the caller as the refusal itself — so the two cannot drift apart.
 _UNSAFE_PATH_MESSAGE = "Server sent an unsafe platform path — download aborted"
 
 _ZIP_TMP_EXT = ".zip.tmp"
@@ -108,7 +104,8 @@ class DownloadServiceConfig:
     plugin did not put there (ADR-0028).
     """
 
-    romm_api: RommRomReader
+    catalogue: RomDetailReader
+    downloads: RomDownloadReader
     download_file_store: DownloadFileStore
     resolve_system: SystemResolver
     loop: asyncio.AbstractEventLoop
@@ -121,7 +118,6 @@ class DownloadServiceConfig:
     target_gate: DownloadTargetGateFn
     m3u_support: SystemM3uSupportFn
     uow_factory: UnitOfWorkFactory
-    # Deferred access to RomRemovalService.remove_rom — the two services form a
     # construction cycle, so the composition root binds it after both exist
     # (#1298 sibling supersede).
     rom_remover: RomRemoverProvider
@@ -131,7 +127,8 @@ class DownloadService:
     """ROM download engine: downloads and queue management."""
 
     def __init__(self, *, config: DownloadServiceConfig) -> None:
-        self._romm_api = config.romm_api
+        self._catalogue = config.catalogue
+        self._downloads = config.downloads
         self._download_file_store = config.download_file_store
         self._resolve_system = config.resolve_system
         self._loop = config.loop
@@ -347,7 +344,7 @@ class DownloadService:
         """
         self._download_in_progress.add(rom_id)
         try:
-            rom_detail = await self._loop.run_in_executor(None, self._romm_api.get_rom, rom_id)
+            rom_detail = await self._loop.run_in_executor(None, self._catalogue.get_rom, rom_id)
         except Exception as e:
             self._download_in_progress.discard(rom_id)
             self._logger.error(f"Failed to fetch ROM {rom_id}: {e}")
@@ -355,7 +352,6 @@ class DownloadService:
 
         platform_slug = rom_detail.get("platform_slug", "")
         platform_fs_slug = rom_detail.get("platform_fs_slug")
-        system = self._resolve_system(platform_slug, platform_fs_slug)
 
         # Path building, the occupancy gate, directory creation and the disk
         # pre-flight can all raise (SD card unmounted → OSError; ``roms_path()``
@@ -365,6 +361,7 @@ class DownloadService:
         # early-return guards inside still ``return`` (not raise) and discard the
         # flag themselves; a ``return`` does not trip the except.
         try:
+            system = self._resolve_system(platform_slug, platform_fs_slug)
             roms_path = self._retrodeck_paths.roms_path()
             try:
                 # ``system`` may be an unmapped server slug passed through verbatim
@@ -965,7 +962,7 @@ class DownloadService:
                     await self._loop.run_in_executor(
                         None,
                         partial(
-                            self._romm_api.download_rom_content,
+                            self._downloads.download_rom_content,
                             rom_id,
                             file_name,
                             tmp_zip,
@@ -997,7 +994,7 @@ class DownloadService:
                     await self._loop.run_in_executor(
                         None,
                         partial(
-                            self._romm_api.download_rom_content,
+                            self._downloads.download_rom_content,
                             rom_id,
                             file_name,
                             tmp_path,

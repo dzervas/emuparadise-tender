@@ -135,15 +135,43 @@ class RommPlaytimeApi(Protocol):
         ...
 
 
-class RommRomReader(Protocol):
-    """RomM ROM-listing, ROM-download, and cover-download surface."""
+class RomDetailReader(Protocol):
+    """Catalogue detail consumed by the installation engine."""
 
     def get_rom(self, rom_id: int) -> dict[str, Any]:
         """Fetch a single ROM by ID.
 
-        Returns the ROM dict from /api/roms/{rom_id}.
+        Returns the installation metadata for this local identity.
         """
         ...
+
+
+class RomDownloadReader(Protocol):
+    """Byte transfer independent of catalogue metadata and installation paths."""
+
+    def download_rom_content(
+        self,
+        rom_id: int,
+        filename: str,
+        dest: str,
+        progress_callback: Any = None,
+        *,
+        resume: bool = False,
+        on_meta: Any = None,
+    ) -> None:
+        """Download a ROM file to a local destination.
+
+        The destination is selected by the installation engine, never the source.
+        Optional progress_callback reports received and total byte counts.
+        ``resume=True`` appends onto an existing partial transfer when the
+        server honours the ``Range`` request; ``on_meta`` is invoked once with
+        ``range_supported: bool`` when the response headers arrive.
+        """
+        ...
+
+
+class RommRomReader(RomDetailReader, RomDownloadReader, Protocol):
+    """RomM ROM-listing, ROM-download, and cover-download surface."""
 
     def get_rom_once(self, rom_id: int) -> dict[str, Any]:
         """Fetch a single ROM by ID once with the short probe timeout."""
@@ -236,26 +264,6 @@ class RommRomReader(Protocol):
         Smart collections are filter-defined: the server resolves
         membership at query time from a stored filter, so the returned
         ``rom_count`` reflects the current library state.
-        """
-        ...
-
-    def download_rom_content(
-        self,
-        rom_id: int,
-        filename: str,
-        dest: str,
-        progress_callback: Any = None,
-        *,
-        resume: bool = False,
-        on_meta: Any = None,
-    ) -> None:
-        """Download a ROM file to a local destination.
-
-        Streams /api/roms/{rom_id}/content/{filename} to dest.
-        Filename is URL-encoded. Optional progress_callback for tracking.
-        ``resume=True`` appends onto an existing partial transfer when the
-        server honours the ``Range`` request; ``on_meta`` is invoked once with
-        ``range_supported: bool`` when the response headers arrive.
         """
         ...
 

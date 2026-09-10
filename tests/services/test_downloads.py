@@ -225,7 +225,8 @@ def plugin():
     )
     p._download_service = DownloadService(
         config=DownloadServiceConfig(
-            romm_api=p._romm_api,
+            catalogue=p._romm_api,
+            downloads=p._romm_api,
             download_file_store=download_file_store,
             resolve_system=p._resolve_system,
             loop=asyncio.get_event_loop(),
