@@ -115,6 +115,7 @@ name = Services must not import other services
 type = independence
 modules =
     services.achievements
+    services.catalogue
     services.active_core_resolver
     services.artwork
     services.connection

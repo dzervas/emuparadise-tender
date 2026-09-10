@@ -10,6 +10,7 @@
  * Save Sync and BIOS items only appear when relevant.
  */
 
+import { isPublicCatalogueRom } from "../utils/providerIdentity";
 import { useState, useEffect, FC, Fragment, type ReactElement } from "react";
 import { showToast } from "../utils/toast";
 import {
@@ -895,7 +896,7 @@ export const RomMPlaySection: FC<RomMPlaySectionProps> = ({ appId }) => { // NOS
   };
 
   // Version mismatch — render nothing (VersionErrorCard is shown in RomMGameInfoPanel instead)
-  if (versionError) {
+  if (versionError && !isPublicCatalogueRom(detail.romId)) {
     return null;
   }
 
@@ -908,7 +909,7 @@ export const RomMPlaySection: FC<RomMPlaySectionProps> = ({ appId }) => { // NOS
   const infoItems: ReactElement[] = [];
 
   // Offline indicator (first — most prominent)
-  if (connectionState === "offline") {
+  if (connectionState === "offline" && !isPublicCatalogueRom(detail.romId)) {
     infoItems.push(
       <div key="offline-indicator" className="romm-info-item">
         <div className="romm-info-header">

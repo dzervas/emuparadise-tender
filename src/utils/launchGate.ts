@@ -14,6 +14,7 @@
  * global watcher "I already gated this appId — don't re-gate it".
  */
 
+import { isPublicCatalogueRom } from "./providerIdentity";
 import type { SyncConflict } from "../types";
 import { logError } from "../api/backend";
 
@@ -132,9 +133,7 @@ export interface LaunchGateOps {
  * otherwise) resolves to `{ decision: "allow" }`. A bug in the gate must never
  * trap the user's game behind it.
  *
- * `_appId` / `_romId` are accepted so callers pass the identifiers the injected
- * ops were bound for (and to keep the signature stable as ops grow); the gate
- * itself routes purely through the callbacks, so they are intentionally unused.
+ * Public catalogue entries use local launchability checks and have no RomM save-sync gate.
  */
 export async function runLaunchGate(_appId: number, _romId: number, ops: LaunchGateOps): Promise<GateVerdict> {
   try {
@@ -149,6 +148,8 @@ export async function runLaunchGate(_appId: number, _romId: number, ops: LaunchG
     if (!(await ops.hasLaunchTarget())) {
       return { decision: "block", reason: "no_launch_target" };
     }
+
+    if (isPublicCatalogueRom(_romId)) return { decision: "allow" };
 
     // 3. Save-slot tracking setup. "abort" means the user saw setup UI and
     //    declined — bail silently.

@@ -1108,6 +1108,7 @@ class TestMainStartupOrdering:
         connection_service.migrate_legacy_credentials = AsyncMock()
 
         wired_services = {
+            "catalogue_service": MagicMock(),
             "save_sync_service": save_sync_service,
             "playtime_service": MagicMock(),
             "sync_service": MagicMock(),
@@ -1139,6 +1140,10 @@ class TestMainStartupOrdering:
 
         bootstrap_result = BootstrapResult(
             adapters=AdapterBundle(
+                resolve_system=MagicMock(side_effect=lambda slug, fs_slug=None: fs_slug or slug),
+                public_catalogue=MagicMock(),
+                public_sources=MagicMock(),
+                download_resolvers={},
                 http_adapter=MagicMock(),
                 romm_api=MagicMock(),
                 steam_config=MagicMock(),

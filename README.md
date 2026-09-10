@@ -5,7 +5,11 @@
   <img src="assets/lockup-animated.gif" alt="Tender" width="300">
 </picture>
 
-<h3>Your RomM library, running native in Steam</h3>
+<h3>Your emulator library, running in Steam</h3>
+
+This fork adds [EmuParadise catalogue imports with Romspedia/RomsDL downloads](docs/user-guide/catalogue-imports.md)
+and configured EmuDeck launch support alongside RetroDECK. RomM remains supported.
+See the linked guide for the current installation and download limits.
 
 [Getting Started](https://danielcopper.github.io/romm-tender/user-guide/getting-started/) ·
 [Configuration](https://danielcopper.github.io/romm-tender/user-guide/configuration/) ·

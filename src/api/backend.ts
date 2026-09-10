@@ -1242,3 +1242,24 @@ export const copySaveToSlot = callable<[number, number, string], CopySaveToSlotS
 // Achievements callables
 export const getAchievements = callable<[number], AchievementList>("get_achievements");
 export const getAchievementProgress = callable<[number], AchievementProgress>("get_achievement_progress");
+
+export interface CatalogueInspection {
+  success: boolean;
+  message?: string;
+  entry?: { title: string; platform: string; description: string };
+  download?: { filename: string; provider: string };
+  system?: string;
+}
+export interface CatalogueImport {
+  success: boolean;
+  message?: string;
+  rom_id?: number;
+  app_id?: number | null;
+  shortcut?: import("../types").SyncAddItem;
+}
+export const inspectCatalogueEntry = callable<[string, string, string], CatalogueInspection>("inspect_catalogue_entry");
+export const importCatalogueEntry = callable<[string, string, string], CatalogueImport>("import_catalogue_entry");
+export const bindCatalogueShortcut = callable<[number, number], BackendResult>("bind_catalogue_shortcut");
+
+export const getEmulatorInstallation = callable<[], { selection: string }>("get_emulator_installation");
+export const saveEmulatorInstallation = callable<[string], BackendResult>("save_emulator_installation");

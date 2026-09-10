@@ -75,6 +75,7 @@ def _rewind_to_v4(db_path: str) -> None:
         # Reverse 018 so 005's `UPDATE rom_save_states` finds the table under its
         # pre-rename name and 018 re-applies the rename cleanly.
         conn.execute("ALTER TABLE rom_save_sync_states RENAME TO rom_save_states")
+        conn.execute("DROP TABLE public_sources")
         conn.execute("PRAGMA user_version = 4")
     finally:
         conn.close()

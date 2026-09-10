@@ -1165,3 +1165,17 @@ class MigrationService:
         if not old or not new or old == new:
             return {"success": False, "reason": "no_migration_needed", "message": "No save sorting migration needed"}
         return await self._loop.run_in_executor(None, self._migrate_save_sort_files_io, old, new, conflict_strategy)
+
+    def prepare_installation_change(self) -> bool:
+        """Forget location markers only when there is no installation or save state to move."""
+        with self._uow_factory() as uow:
+            if (
+                any(uow.rom_installs.iter_all())
+                or any(uow.rom_save_sync_states.iter_all())
+                or any(uow.bios_files.iter_all())
+            ):
+                return False
+            uow.kv_config.delete(_KV_RETRODECK_HOME)
+            uow.kv_config.delete(_KV_RETRODECK_HOME_PREVIOUS)
+            uow.kv_config.delete(_KV_RETRODECK_HOME_HOPS)
+        return True

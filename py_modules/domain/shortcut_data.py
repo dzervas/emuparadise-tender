@@ -71,6 +71,7 @@ class EmulatorInvocation:
     core_so: str | None = None
     command: str | None = None
     launcher: str | None = None
+    host_command: str | None = None
 
     @classmethod
     def libretro(cls, core_so: str, label: str | None = None) -> EmulatorInvocation:
@@ -112,6 +113,10 @@ def resolve_emulator_invocation(rom: dict[str, Any], emulator: EmulatorInvocatio
     # (no "None.so" / empty -e); anything unrenderable degrades to the plain launch.
     if emulator is None:
         return RETRODECK_INVOCATION
+    if emulator.kind == "unavailable":
+        raise ValueError("The selected installation has no configured launcher for this system")
+    if emulator.host_command is not None:
+        return emulator.host_command
     if emulator.kind == "direct" and emulator.launcher and emulator.command:
         # Run the emulator's sandbox launcher directly, bypassing run_game.sh's
         # directory-as-a-file reinterpretation (ADR-0019). The game folder is

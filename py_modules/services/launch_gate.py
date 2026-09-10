@@ -15,6 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
+from domain.provider_identity import is_public_id
+
 if TYPE_CHECKING:
     import asyncio
     import logging
@@ -153,7 +155,7 @@ class LaunchGateService:
         # sync was disabled) would block every launch with no way to resolve
         # it — the Saves tab is hidden while the feature is off — leaving the
         # game permanently unplayable.
-        if not self._save_status_reader.is_save_sync_enabled():
+        if is_public_id(rom_id) or not self._save_status_reader.is_save_sync_enabled():
             return LaunchVerdict(action="allow")
 
         try:

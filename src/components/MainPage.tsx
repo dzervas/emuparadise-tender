@@ -877,6 +877,11 @@ export const MainPage: FC<MainPageProps> = ({ onNavigate }) => {
           </div>
         </PanelSectionRow>
         <PanelSectionRow>
+          <ButtonItem layout="below" bottomSeparator="none" onClick={() => onNavigate("catalogue")}>
+            Catalogue
+          </ButtonItem>
+        </PanelSectionRow>
+        <PanelSectionRow>
           <ButtonItem layout="below" bottomSeparator="none" onClick={() => onNavigate("library")}>
             Library
           </ButtonItem>

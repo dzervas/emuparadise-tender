@@ -16,6 +16,7 @@ from bootstrap import (
     wire_services,
 )
 
+from lib.installation_gate import installation_restart_blocked
 from lib.migration_gate import migration_blocked
 from lib.prune_gate import (
     acquire_prune_conflict_lease,
@@ -34,6 +35,7 @@ from lib.sync_gate import sync_active_blocked
 
 
 class Plugin:
+    _installation_restart_required: bool = False
     settings: dict[str, Any]
     loop: asyncio.AbstractEventLoop
 
@@ -160,6 +162,7 @@ class Plugin:
         self._playtime_service = services["playtime_service"]
         self._sync_service = services["sync_service"]
         self._download_service = services["download_service"]
+        self._catalogue_service = services["catalogue_service"]
         self._rom_adoption_service = services["rom_adoption_service"]
         self._rom_removal_service = services["rom_removal_service"]
         self._firmware_service = services["firmware_service"]
@@ -429,14 +432,17 @@ class Plugin:
         return await self._firmware_service.get_firmware_status()
 
     @migration_blocked
+    @installation_restart_blocked
     async def download_all_firmware(self, platform_slug):
         return await self._firmware_service.download_all_firmware(platform_slug)
 
     @migration_blocked
+    @installation_restart_blocked
     async def download_required_firmware(self, platform_slug):
         return await self._firmware_service.download_required_firmware(platform_slug)
 
     @migration_blocked
+    @installation_restart_blocked
     async def download_platform_firmware_file(self, platform_slug, file_name):
         return await self._firmware_service.download_platform_firmware_file(platform_slug, file_name)
 
@@ -652,6 +658,7 @@ class Plugin:
 
     @migration_blocked
     @prune_active_blocked
+    @installation_restart_blocked
     async def start_download(
         self, rom_id, replace_existing=False, candidate_path=None, collision_choice=None, page_saw_candidate=False
     ):
@@ -675,6 +682,7 @@ class Plugin:
 
     @migration_blocked
     @prune_active_blocked
+    @installation_restart_blocked
     async def adopt_existing_rom(self, rom_id, candidate_path=None, collision_choice=None):
         """Record content already on disk as this ROM's install, without downloading.
 
@@ -710,6 +718,7 @@ class Plugin:
 
     @migration_blocked
     @prune_active_blocked
+    @installation_restart_blocked
     async def resume_download(self, rom_id):
         result = await self._download_service.resume_download(rom_id)
         task = self._download_service.task_for_rom(int(rom_id)) if result.get("success") else None
@@ -1056,3 +1065,41 @@ class Plugin:
         device restart rather than reporting the move as done.
         """
         return await self._data_location_service.choose_data_location(source)
+
+    @migration_blocked
+    @prune_active_blocked
+    async def inspect_catalogue_entry(self, catalogue_url: str, provider: str, download_url: str) -> dict[str, Any]:
+        return await self._catalogue_service.inspect(catalogue_url, provider, download_url)
+
+    @migration_blocked
+    @prune_active_blocked
+    @installation_restart_blocked
+    async def import_catalogue_entry(self, catalogue_url: str, provider: str, download_url: str) -> dict[str, Any]:
+        return await self._catalogue_service.import_entry(catalogue_url, provider, download_url)
+
+    @migration_blocked
+    @prune_active_blocked
+    async def bind_catalogue_shortcut(self, rom_id: int, app_id: int) -> dict[str, Any]:
+        return await self._catalogue_service.bind_shortcut(rom_id, app_id)
+
+    @migration_blocked
+    async def get_emulator_installation(self) -> dict[str, Any]:
+        return self._settings_service.get_emulator_installation()
+
+    @migration_blocked
+    @prune_active_blocked
+    @sync_active_blocked
+    async def save_emulator_installation(self, selection: str) -> dict[str, Any]:
+        queue = self._download_service.get_download_queue()["downloads"]
+        if self._download_service.active_download_rom_ids() or any(
+            item["status"] not in ("completed", "failed", "cancelled") for item in queue
+        ):
+            return {
+                "success": False,
+                "reason": "downloads_active",
+                "message": "Finish or cancel downloads before changing installations",
+            }
+        result = self._settings_service.save_emulator_installation(selection)
+        if result["success"]:
+            self._installation_restart_required = result.get("restart_required", False)
+        return result

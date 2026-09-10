@@ -172,3 +172,17 @@ describe("skip-set — markLaunchSkipped / consumeLaunchSkip", () => {
     expect(consumeLaunchSkip(777)).toBe(false);
   });
 });
+
+it("allows public catalogue launches without contacting RomM after checking the launch target", async () => {
+  const ops = makeOps();
+  expect(await runLaunchGate(123, 2 ** 52, ops)).toEqual({ decision: "allow" });
+  expect(ops.hasLaunchTarget).toHaveBeenCalled();
+  expect(ops.ensureTrackingConfigured).not.toHaveBeenCalled();
+  expect(ops.checkReachability).not.toHaveBeenCalled();
+  expect(ops.preLaunchSync).not.toHaveBeenCalled();
+});
+
+it("still blocks public catalogue entries with no launch target", async () => {
+  const ops = makeOps({ hasLaunchTarget: vi.fn(async () => false) });
+  expect(await runLaunchGate(123, 2 ** 52, ops)).toEqual({ decision: "block", reason: "no_launch_target" });
+});

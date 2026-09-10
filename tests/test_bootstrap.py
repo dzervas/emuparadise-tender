@@ -38,7 +38,9 @@ from fakes.fake_unit_of_work import FakeUnitOfWorkFactory
 from fakes.system_time import FakeClock, FakeSleeper, FakeUuidGen
 from models.data_location import UserDataLocations
 
+from adapters.emulator_installation import EmulatorInstallationAdapter
 from adapters.gavel_native import GavelNativeAdapter
+from adapters.public_catalogue.router import ContentApiRouter
 from adapters.retrodeck_paths import RetroDeckPathsAdapter
 from adapters.romm.http import RommHttpAdapter
 from adapters.romm.romm_api import RommApiAdapter
@@ -95,12 +97,14 @@ class TestBootstrap:
 
     def test_returns_romm_api(self, tmp_path):
         result = _bootstrap_for(tmp_path)
-        assert isinstance(result.adapters.romm_api, RommApiAdapter)
+        assert isinstance(result.adapters.romm_api, ContentApiRouter)
+        assert isinstance(result.adapters.romm_api._romm, RommApiAdapter)
 
     def test_returns_retrodeck_paths_adapter(self, tmp_path):
         """Bootstrap instantiates the RetroDECK paths adapter for the callbacks bundle."""
         result = _bootstrap_for(tmp_path)
-        assert isinstance(result.callbacks.retrodeck_paths, RetroDeckPathsAdapter)
+        assert isinstance(result.callbacks.retrodeck_paths, EmulatorInstallationAdapter)
+        assert isinstance(result.callbacks.retrodeck_paths._retrodeck, RetroDeckPathsAdapter)
 
     def test_returns_core_info_provider_on_adapters(self, tmp_path):
         """``core_info_provider`` is bundled with adapters, not callbacks.
@@ -314,6 +318,10 @@ class TestWireServices:
         """Build a WiringConfig from the flat deps dict produced by ``_make_deps``."""
         return WiringConfig(
             adapters=AdapterBundle(
+                resolve_system=MagicMock(side_effect=lambda slug, fs_slug=None: fs_slug or slug),
+                public_catalogue=MagicMock(),
+                public_sources=MagicMock(),
+                download_resolvers={},
                 http_adapter=deps["http_adapter"],
                 romm_api=deps["romm_api"],
                 steam_config=deps["steam_config"],
@@ -427,7 +435,7 @@ class TestWireServices:
     def test_returns_expected_services(self, tmp_path):
         deps = self._make_deps(tmp_path)
         result = wire_services(self._make_config(deps))
-        assert len(result) == 27
+        assert len(result) == 28
         assert "migration_service" in result
         assert "game_detail_service" in result
         assert "rom_removal_service" in result

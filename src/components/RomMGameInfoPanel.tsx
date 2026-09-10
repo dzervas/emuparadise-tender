@@ -15,6 +15,7 @@
  * CSS classes prefixed with `romm-panel-` are injected separately by styleInjector.
  */
 
+import { isPublicCatalogueRom } from "../utils/providerIdentity";
 import { useState, useEffect, useRef, FC } from "react";
 import { Focusable } from "@decky/ui";
 import { refreshMigrationState, logError } from "../api/backend";
@@ -118,7 +119,7 @@ export const RomMGameInfoPanel: FC<RomMGameInfoPanelProps> = ({ appId }) => {
   useSaveSlotsLoad(state, slotsLoadedRef, readSeqs, setState);
 
   // --- Version mismatch — replace entire panel with polished error card ---
-  if (versionError) {
+  if (versionError && !isPublicCatalogueRom(state.romId)) {
     return (
       <div data-romm="true">
         <VersionErrorCard message={versionError} />

@@ -9,6 +9,7 @@
  * with action: Uninstall.
  */
 
+import { isPublicCatalogueRom } from "../utils/providerIdentity";
 import { useState, useEffect, useRef, FC, ReactElement } from "react";
 import { addEventListener, removeEventListener } from "@decky/api";
 import { showToast } from "../utils/toast";
@@ -155,7 +156,8 @@ export const CustomPlayButton: FC<CustomPlayButtonProps> = ({ appId }) => { // N
   const [romName, setRomName] = useState<string>("");
   const [actionPending, setActionPending] = useState(false);
   const [dlProgress, setDlProgress] = useState<DownloadProgress | null>(null);
-  const [isOffline, setIsOffline] = useState(getRommConnectionState() === "offline");
+  const [serverOffline, setIsOffline] = useState(getRommConnectionState() === "offline");
+  const isOffline = serverOffline && !isPublicCatalogueRom(romId);
   // Positive-knowledge only: set solely when RomM 404s the bound id, so an
   // unreachable server never reaches this state (#1570 F20).
   const [boundVanished, setBoundVanished] = useState(() => isBoundVanished(appId));

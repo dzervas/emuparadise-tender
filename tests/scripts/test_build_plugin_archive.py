@@ -26,13 +26,25 @@ class TestBuildPluginArchive(unittest.TestCase):
         self.root = Path(self.directory.name)
         self.destination = self.root / "dist/Tender.zip"
         paths = (
-            "LICENSE", "README.md", "main.py", "package.json", "plugin.json", "dist/index.js",
-            "bin/rom-launcher", "defaults/config.json", "defaults/README.md",
-            "py_modules/bootstrap/__init__.py", "py_modules/bootstrap/adapters.py",
-            "py_modules/bootstrap/services.py", "py_modules/db/migrations/001_initial.sql",
-            "py_modules/native/libgavel-x86_64-linux.so", "py_modules/_vendor/atlas/__init__.py",
-            "py_modules/_vendor/atlas/data/system_ids.json", "py_modules/__pycache__/stale.pyc",
-            "py_modules/stale.pyc", "dist/index.js.map",
+            "LICENSE",
+            "README.md",
+            "main.py",
+            "package.json",
+            "plugin.json",
+            "dist/index.js",
+            "bin/rom-launcher",
+            "defaults/config.json",
+            "defaults/README.md",
+            "py_modules/bootstrap/__init__.py",
+            "py_modules/bootstrap/adapters.py",
+            "py_modules/bootstrap/services.py",
+            "py_modules/db/migrations/001_initial.sql",
+            "py_modules/native/libgavel-x86_64-linux.so",
+            "py_modules/_vendor/atlas/__init__.py",
+            "py_modules/_vendor/atlas/data/system_ids.json",
+            "py_modules/__pycache__/stale.pyc",
+            "py_modules/stale.pyc",
+            "dist/index.js.map",
         )
         for relative in paths:
             path = self.root / relative
@@ -45,7 +57,9 @@ class TestBuildPluginArchive(unittest.TestCase):
         with zipfile.ZipFile(self.destination) as archive:
             self.assertEqual(archive.read("Tender/config.json"), b"defaults/config.json")
             self.assertEqual(archive.read("Tender/README.md"), b"README.md")
-            self.assertFalse(any("__pycache__" in name or name.endswith((".pyc", ".map")) for name in archive.namelist()))
+            self.assertFalse(
+                any("__pycache__" in name or name.endswith((".pyc", ".map")) for name in archive.namelist())
+            )
             self.assertEqual(len(archive.namelist()), len(set(archive.namelist())))
 
     def test_failed_build_preserves_previous_archive(self):

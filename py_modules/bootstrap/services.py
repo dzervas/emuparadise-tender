@@ -19,6 +19,7 @@ from lib.late_binding import LateBinding
 from services.achievements import AchievementsService, AchievementsServiceConfig
 from services.active_core_resolver import ActiveCoreResolver, ActiveCoreResolverConfig
 from services.artwork import ArtworkService, ArtworkServiceConfig
+from services.catalogue import CatalogueService, CatalogueServiceConfig
 from services.connection import ConnectionService, ConnectionServiceConfig
 from services.cores import CoreService, CoreServiceConfig
 from services.data_location import DataLocationService, DataLocationServiceConfig
@@ -137,7 +138,7 @@ def wire_services(cfg: WiringConfig) -> dict[str, Any]:
             core_info=cfg.adapters.core_info_provider,
             sandbox_launcher=cfg.callbacks.sandbox_launcher,
             platform_core_reader=cfg.callbacks.platform_core_reader,
-            resolve_system=cfg.adapters.http_adapter.resolve_system,
+            resolve_system=cfg.adapters.resolve_system,
             logger=cfg.runtime.logger,
         ),
     )
@@ -306,7 +307,7 @@ def wire_services(cfg: WiringConfig) -> dict[str, Any]:
             download_file_store=cfg.adapters.download_file_store,
             adoption_move=cfg.adapters.adoption_move,
             quarantine_save=save_sync_service.quarantine_local_file,
-            resolve_system=cfg.adapters.http_adapter.resolve_system,
+            resolve_system=cfg.adapters.resolve_system,
             retrodeck_paths=cfg.callbacks.retrodeck_paths,
             install_recorder=rom_install_recorder,
             m3u_support=cfg.callbacks.m3u_support,
@@ -332,7 +333,7 @@ def wire_services(cfg: WiringConfig) -> dict[str, Any]:
             catalogue=cfg.adapters.romm_api,
             downloads=cfg.adapters.romm_api,
             download_file_store=cfg.adapters.download_file_store,
-            resolve_system=cfg.adapters.http_adapter.resolve_system,
+            resolve_system=cfg.adapters.resolve_system,
             loop=cfg.runtime.loop,
             logger=cfg.runtime.logger,
             emit=cfg.runtime.emit,
@@ -375,7 +376,7 @@ def wire_services(cfg: WiringConfig) -> dict[str, Any]:
             firmware_folder_verdicts=cfg.adapters.firmware_folder_verdicts,
             retrodeck_paths=cfg.callbacks.retrodeck_paths,
             core_info=cfg.adapters.core_info_provider,
-            resolve_system=cfg.adapters.http_adapter.resolve_system,
+            resolve_system=cfg.adapters.resolve_system,
             platform_core_reader=cfg.callbacks.platform_core_reader,
             uow_factory=cfg.callbacks.uow_factory,
         ),
@@ -420,12 +421,14 @@ def wire_services(cfg: WiringConfig) -> dict[str, Any]:
             active_core=active_core_resolver,
             path_exists=cfg.adapters.path_probe,
             retrodeck_paths=cfg.callbacks.retrodeck_paths,
-            resolve_system=cfg.adapters.http_adapter.resolve_system,
+            resolve_system=cfg.adapters.resolve_system,
         ),
     )
 
     settings_service = SettingsService(
         config=SettingsServiceConfig(
+            available_installations=cfg.adapters.available_installations,
+            prepare_installation_change=migration_service.prepare_installation_change,
             settings=cfg.stores.settings,
             uow_factory=cfg.callbacks.uow_factory,
             logger=cfg.runtime.logger,
@@ -439,7 +442,7 @@ def wire_services(cfg: WiringConfig) -> dict[str, Any]:
             loop=cfg.runtime.loop,
             logger=cfg.runtime.logger,
             core_info=cfg.adapters.core_info_provider,
-            resolve_system=cfg.adapters.http_adapter.resolve_system,
+            resolve_system=cfg.adapters.resolve_system,
             settings=cfg.stores.settings,
             settings_persister=cfg.callbacks.settings_persister,
             bios_checker=firmware_service,
@@ -589,7 +592,21 @@ def wire_services(cfg: WiringConfig) -> dict[str, Any]:
         )
     )
 
+    catalogue_service = CatalogueService(
+        config=CatalogueServiceConfig(
+            catalogue=cfg.adapters.public_catalogue,
+            resolve_system=cfg.adapters.resolve_system,
+            sources=cfg.adapters.public_sources,
+            resolvers=cfg.adapters.download_resolvers,
+            uow_factory=cfg.callbacks.uow_factory,
+            clock=cfg.runtime.clock,
+            loop=cfg.runtime.loop,
+            plugin_dir=cfg.runtime.plugin_dir,
+        )
+    )
+
     return {
+        "catalogue_service": catalogue_service,
         "save_sync_service": save_sync_service,
         "playtime_service": playtime_service,
         "sync_service": sync_service,

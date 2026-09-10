@@ -23,7 +23,7 @@ from lib.url_host import is_valid_server_url
 if TYPE_CHECKING:
     import logging
 
-    from services.protocols import SettingsPersister, SteamConfigStore, UnitOfWorkFactory
+    from services.protocols import InstallationChangeFn, SettingsPersister, SteamConfigStore, UnitOfWorkFactory
 
 
 _MASK_PLACEHOLDER = "••••"
@@ -47,6 +47,8 @@ class SettingsServiceConfig:
     logger: logging.Logger
     settings_persister: SettingsPersister
     steam_config: SteamConfigStore
+    available_installations: tuple[str, ...] = ("auto", "retrodeck")
+    prepare_installation_change: InstallationChangeFn = lambda: True
 
 
 class SettingsService:
@@ -60,6 +62,9 @@ class SettingsService:
         self._logger = config.logger
         self._settings_persister = config.settings_persister
         self._steam_config = config.steam_config
+        self._active_installation_selection = config.settings.get("emulator_installation", "auto")
+        self._available_installations = config.available_installations
+        self._prepare_installation_change = config.prepare_installation_change
 
     # ── Server connection settings ───────────────────────────────────────
 
@@ -309,3 +314,43 @@ class SettingsService:
         self._settings.pop("_settings_reset_notice", None)
         self._settings_persister.save_settings()
         return {"success": True}
+
+    def get_emulator_installation(self) -> dict[str, Any]:
+        return {
+            "selection": self._settings.get("emulator_installation", "auto"),
+            "available": self._available_installations,
+        }
+
+    def save_emulator_installation(self, selection: str) -> dict[str, Any]:
+        if selection not in ("auto", "retrodeck", "emudeck"):
+            return {"success": False, "reason": "invalid_selection", "message": "Choose Auto, RetroDECK or EmuDeck"}
+        if selection not in self._available_installations:
+            return {
+                "success": False,
+                "reason": "not_installed",
+                "message": "That emulator installation was not detected",
+            }
+        if selection == self._settings.get("emulator_installation", "auto"):
+            return {
+                "success": True,
+                "message": "Installation choice is unchanged",
+                "restart_required": selection != self._active_installation_selection,
+            }
+        if not self._prepare_installation_change():
+            return {
+                "success": False,
+                "reason": "managed_data",
+                "message": "Keep the current installation while managed ROMs, BIOS or save tracking remain",
+            }
+        previous = self._settings.get("emulator_installation", "auto")
+        self._settings["emulator_installation"] = selection
+        try:
+            self._settings_persister.save_settings()
+        except Exception as exc:
+            self._settings["emulator_installation"] = previous
+            return {"success": False, "reason": "save_failed", "message": str(exc)}
+        return {
+            "success": True,
+            "message": "Restart Decky to use the selected installation",
+            "restart_required": selection != self._active_installation_selection,
+        }

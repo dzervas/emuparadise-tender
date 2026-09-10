@@ -26,6 +26,7 @@ from domain.playtime import (
     latest_end_time,
     rejected_session_indices,
 )
+from domain.provider_identity import is_public_id
 from lib.errors import RommForbiddenError, RommNotFoundError, RommUnprocessableEntityError
 from lib.list_result import ErrorCode
 
@@ -208,7 +209,7 @@ class PlaytimeService:
                 self._log_debug(
                     _session_debug_line(rom_id, started_at, ended_at, monotonic_start, monotonic_end, duration)
                 )
-                if not device_id:
+                if not device_id or is_public_id(rom_id):
                     # Unregistered device: fold locally, never enqueue (an empty
                     # device id must never reach the wire, ADR-0018 decision #8).
                     self._log_debug(f"record_session_end: rom {rom_id} not enqueued — device unregistered")

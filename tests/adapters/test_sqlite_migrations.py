@@ -80,14 +80,15 @@ def _set_user_version(db_path: str, version: int) -> None:
 # + 017_add_last_sync_server_hash + 018_rename_rom_save_states
 # + 019_add_collection_sync_state + 020_add_fetch_generation
 # + 021_add_rom_fs_size + 022_rename_collection_kind_user_to_standard
-# + 023_add_rom_install_launchable).
-_SHIPPED_VERSION = 23
+# + 023_add_rom_install_launchable + 024_add_public_sources).
+_SHIPPED_VERSION = 24
 
 # Tables after every shipped migration: the v1 set plus 006's play-session outbox,
 # 012's per-platform completion stamp, and 019's per-collection completion stamp,
 # with 018 renaming the save-sync scalar table rom_save_states -> rom_save_sync_states.
 _SHIPPED_TABLES = (_V1_TABLES - {"rom_save_states"}) | {
     "rom_save_sync_states",
+    "public_sources",
     "rom_playtime_sessions",
     "platform_sync_state",
     "collection_sync_state",

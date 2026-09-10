@@ -269,3 +269,7 @@ class RetroArchCoreInfoReader(Protocol):
     """
 
     def get_corename(self, core_so: str) -> str | None: ...
+
+
+class InstallationChangeFn(Protocol):
+    def __call__(self) -> bool: ...

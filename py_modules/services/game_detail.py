@@ -19,6 +19,7 @@ from models.metadata import AchievementSummary
 
 from domain.bios_status import BIOS_LABEL_UNKNOWN, BIOS_LEVEL_UNKNOWN
 from domain.platform_names import decode_platform_names
+from domain.provider_identity import is_public_id
 from domain.save_status import compute_save_sync_display
 from lib.path_safety import PathTraversalError, safe_join
 
@@ -273,7 +274,7 @@ class GameDetailService:
         )
 
         # Save sync
-        save_sync_enabled = bool(self._settings.get("save_sync_enabled", False))
+        save_sync_enabled = not is_public_id(rom_id) and bool(self._settings.get("save_sync_enabled", False))
         save_status = self._build_save_status(save_state)
         save_sync_display = None
         if save_status is not None:

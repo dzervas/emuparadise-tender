@@ -83,6 +83,7 @@ class EmulatorOption:
     command: str
     status: str
     reason: str | None
+    host_command: str | None = None
 
 
 def classify_command(label: str, text: str) -> EmulatorOption:
@@ -186,6 +187,14 @@ def option_to_invocation(option: EmulatorOption | None) -> EmulatorInvocation | 
     """
     if option is None or option.status != "bakeable":
         return None
+    if option.host_command is not None:
+        return EmulatorInvocation(
+            kind=option.kind,
+            label=option.label,
+            core_so=option.core_so,
+            command=option.command,
+            host_command=option.host_command,
+        )
     if option.kind == "libretro" and option.core_so:
         return EmulatorInvocation.libretro(option.core_so, option.label)
     if option.kind == "standalone" and option.command:

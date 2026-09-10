@@ -53,6 +53,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from domain.provider_identity import is_public_id
 from domain.sync_diff import select_stale_removals
 
 if TYPE_CHECKING:
@@ -101,7 +102,7 @@ class LocalLibraryReader:
         with self._uow_factory() as uow:
             registry: dict[str, dict[str, Any]] = {}
             for rom in uow.roms.iter_all():
-                if rom.shortcut_app_id is None:
+                if rom.shortcut_app_id is None or is_public_id(rom.rom_id):
                     continue
                 registry[str(rom.rom_id)] = {
                     "app_id": rom.shortcut_app_id,
@@ -165,7 +166,7 @@ class LocalLibraryReader:
                     "cover_source": rom.cover_source,
                 }
                 for rom in rows
-                if rom.shortcut_app_id is not None
+                if not is_public_id(rom.rom_id) and rom.shortcut_app_id is not None
             }
 
     def do_read_resident_group_keys(self) -> dict[int, str]:
@@ -202,6 +203,6 @@ class LocalLibraryReader:
             candidate_stale = [
                 (rom.rom_id, rom.shortcut_app_id)
                 for rom in uow.roms.iter_all()
-                if rom.shortcut_app_id is not None and rom.rom_id not in synced_rom_ids
+                if not is_public_id(rom.rom_id) and rom.shortcut_app_id is not None and rom.rom_id not in synced_rom_ids
             ]
         return select_stale_removals(candidate_stale, synced_app_ids)

@@ -166,7 +166,12 @@ class ActiveCoreResolver:
         the last is logged (the baked ``run_game`` form will fail to launch a
         folder until a later re-bake heals it).
         """
-        if emulator is None or emulator.kind != "standalone" or emulator.command is None:
+        if (
+            emulator is None
+            or emulator.host_command is not None
+            or emulator.kind != "standalone"
+            or emulator.command is None
+        ):
             return emulator
         if install is None or folder_boot_root(install.file_path, install.rom_dir) is None:
             return emulator

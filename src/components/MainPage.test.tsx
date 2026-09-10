@@ -3277,7 +3277,7 @@ describe("MainPage", () => {
 
       // The menu, and nothing else — the preview is a row that states, not a
       // button that acts.
-      expect(buttonLabels(container)).toEqual(["Sync", "Library", "Settings", "Data Management"]);
+      expect(buttonLabels(container)).toEqual(["Sync", "Catalogue", "Library", "Settings", "Data Management"]);
     });
 
     it("issues neither a preview nor a run, whatever on it is pressed", async () => {

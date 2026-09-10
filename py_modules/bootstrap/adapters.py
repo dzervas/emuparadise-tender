@@ -16,15 +16,16 @@ from __future__ import annotations
 import functools
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from adapters.adoption_move import AdoptionMoveAdapter
 from adapters.asyncio_sleeper import AsyncioSleeper
-from adapters.atlas_catalogue import AtlasCatalogueAdapter, first_detected_installation
+from adapters.atlas_catalogue import AtlasCatalogueAdapter
 from adapters.atlas_firmware import AtlasFirmwareAdapter, AtlasFolderVerdictAdapter
 from adapters.cover_art_file_store import CoverArtFileStoreAdapter
 from adapters.debug_logger import SettingsAwareDebugLogger
 from adapters.download_file import DownloadFileAdapter
+from adapters.emulator_installation import EmulatorInstallationAdapter, InstallationCatalogueAdapter
 from adapters.es_find_rules import EsFindRulesAdapter
 from adapters.firmware_file import FirmwareFileAdapter
 from adapters.game_process import GameProcessAdapter
@@ -41,6 +42,11 @@ from adapters.persistence import (
 )
 from adapters.plugin_metadata import PluginMetadataAdapter
 from adapters.prune_artifacts import PruneArtifactAdapter
+from adapters.public_catalogue.downloads import RomsdlDownloadAdapter, RomspediaDownloadAdapter
+from adapters.public_catalogue.emuparadise import EmuparadiseCatalogueAdapter
+from adapters.public_catalogue.http import PublicHttpAdapter
+from adapters.public_catalogue.router import ContentApiRouter
+from adapters.public_catalogue.sources import PublicSourceStore
 from adapters.recovery_bundle import RecoveryBundleAdapter
 from adapters.renderer_gc import RendererGcAdapter
 from adapters.renderer_rss import RendererRssAdapter
@@ -112,6 +118,7 @@ if TYPE_CHECKING:
         SteamRecoveryStore,
         SystemKnownFn,
         SystemM3uSupportFn,
+        SystemResolver,
         SystemSupportedExtensionsFn,
         UnitOfWorkFactory,
         UuidGen,
@@ -138,6 +145,10 @@ class AdapterBundle:
 
     http_adapter: RommHttpAdapter
     romm_api: RommApi
+    resolve_system: SystemResolver
+    public_catalogue: EmuparadiseCatalogueAdapter
+    public_sources: PublicSourceStore
+    download_resolvers: dict[str, Any]
     steam_config: SteamConfigStore
     sgdb_adapter: SteamGridDbAdapter
     cover_art_file_store: CoverArtFileStore
@@ -162,6 +173,7 @@ class AdapterBundle:
     prune_artifacts: PruneArtifactStore
     steam_recovery: SteamRecoveryStore
     data_location_store: DataLocationStore
+    available_installations: tuple[str, ...] = ("auto", "retrodeck")
 
 
 @dataclass(frozen=True)
@@ -363,7 +375,6 @@ def bootstrap(
     # service config — the service cutover (#784) consumes it.
     uow_factory: UnitOfWorkFactory = functools.partial(SqliteUnitOfWork, db_path)
 
-    retrodeck_paths = RetroDeckPathsAdapter(user_home=user_home, logger=logger)
     retroarch_config = RetroArchConfigAdapter(user_home=user_home, logger=logger)
     retroarch_core_info = RetroArchCoreInfoAdapter(user_home=user_home, logger=logger)
     es_find_rules = EsFindRulesAdapter(logger=logger, user_home=user_home)
@@ -385,6 +396,11 @@ def bootstrap(
     if persistence.corrupt_reset is not None:
         settings["_settings_reset_notice"] = {"backed_up_to": persistence.corrupt_reset["backed_up_to"]}
     persistence.save_settings(settings)
+    retrodeck_paths = EmulatorInstallationAdapter(
+        user_home=user_home,
+        preference=settings.get("emulator_installation", "auto"),
+        retrodeck_paths=RetroDeckPathsAdapter(user_home=user_home, logger=logger),
+    )
     settings_persister = SettingsPersisterAdapter(persistence, settings)
     # Binds the same live settings dict so the per-platform-core fan-out resolves
     # the freshly-written value, not a snapshot.
@@ -404,7 +420,28 @@ def bootstrap(
     prune_artifacts = PruneArtifactAdapter(runtime_dir=locations.data_dir)
     steam_recovery = SteamRecoveryAdapter(user_home=user_home, logger=logger)
     http_adapter = RommHttpAdapter(settings, plugin_dir, logger, user_agent)
-    romm_api = RommApiAdapter(http_adapter)
+    public_sources = PublicSourceStore(db_path=db_path)
+    public_catalogue = EmuparadiseCatalogueAdapter(
+        http=PublicHttpAdapter(
+            hosts=EmuparadiseCatalogueAdapter.page_hosts,
+            user_agent=user_agent,
+        )
+    )
+    transports = {
+        "romspedia": PublicHttpAdapter(
+            hosts=RomspediaDownloadAdapter.page_hosts | {RomspediaDownloadAdapter.file_host}, user_agent=user_agent
+        ),
+        "romsdl": PublicHttpAdapter(
+            hosts=RomsdlDownloadAdapter.page_hosts | {RomsdlDownloadAdapter.file_host}, user_agent=user_agent
+        ),
+    }
+    download_resolvers = {
+        "romspedia": RomspediaDownloadAdapter(http=transports["romspedia"]),
+        "romsdl": RomsdlDownloadAdapter(http=transports["romsdl"]),
+    }
+    romm_api = ContentApiRouter(
+        romm=RommApiAdapter(http_adapter), sources=public_sources, resolvers=download_resolvers, transports=transports
+    )
     steam_config = SteamConfigAdapter(user_home=user_home, logger=logger)
     sgdb_adapter = SteamGridDbAdapter(settings=settings, logger=logger, user_agent=user_agent)
     cover_art_file_store = CoverArtFileStoreAdapter()
@@ -441,15 +478,31 @@ def bootstrap(
     # the adapter: the highest-priority arrangement, which is RetroDECK wherever
     # one is installed. Offering the others is #918; nothing in services/ learns
     # which one answered.
-    emulator_catalogue = AtlasCatalogueAdapter(
-        choose_installation=functools.partial(first_detected_installation, user_home),
+    atlas_catalogue = AtlasCatalogueAdapter(
+        choose_installation=retrodeck_paths.choose,
         emulator_installed=es_find_rules.command_emulator_installed,
         log_debug=debug_logger,
     )
 
+    emulator_catalogue = InstallationCatalogueAdapter(catalogue=atlas_catalogue, installation=retrodeck_paths)
+
+    def resolve_system(platform_slug: str, platform_fs_slug: str | None = None) -> str:
+        system = http_adapter.resolve_system(platform_slug, platform_fs_slug)
+        if retrodeck_paths.kind == "emudeck":
+            retrodeck_paths.validate_system(system)
+            emulator = emulator_catalogue.get_default_emulator(system)
+            if emulator is None or emulator.kind == "unavailable":
+                raise ValueError("Configure this system's EmuDeck launcher before downloading")
+        return system
+
     adapters = AdapterBundle(
         http_adapter=http_adapter,
-        romm_api=romm_api,
+        romm_api=cast("RommApi", romm_api),
+        resolve_system=resolve_system,
+        available_installations=retrodeck_paths.available,
+        public_catalogue=public_catalogue,
+        public_sources=public_sources,
+        download_resolvers=download_resolvers,
         steam_config=steam_config,
         sgdb_adapter=sgdb_adapter,
         cover_art_file_store=cover_art_file_store,
@@ -464,7 +517,7 @@ def bootstrap(
         save_file_store=save_file_store,
         path_probe=path_probe,
         resolve_path=resolve_path,
-        core_info_provider=emulator_catalogue,
+        core_info_provider=cast("CoreInfoProvider", emulator_catalogue),
         renderer_rss=renderer_rss,
         renderer_gc=renderer_gc,
         game_process=game_process,

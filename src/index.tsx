@@ -3,6 +3,7 @@ import { showToast, PLUGIN_NAME } from "./utils/toast";
 import { useState, useRef, useEffect, FC, type ReactNode } from "react";
 import { Focusable } from "@decky/ui";
 import { FaGamepad } from "react-icons/fa";
+import { CataloguePage } from "./components/CataloguePage";
 import { MainPage } from "./components/MainPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { LibraryPage } from "./components/LibraryPage";
@@ -148,6 +149,9 @@ const QAMPanel: FC = () => {
 
   let content: ReactNode;
   switch (page) {
+    case "catalogue":
+      content = <CataloguePage onBack={() => setPage("main")} />;
+      break;
     case "sync":
       content = <SyncPage onBack={() => setPage("main")} />;
       break;

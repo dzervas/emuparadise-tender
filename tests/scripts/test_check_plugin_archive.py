@@ -15,11 +15,19 @@ _MODULE = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_MODULE)
 
 _PAYLOAD = (
-    "main.py", "plugin.json", "package.json", "dist/index.js", "bin/rom-launcher",
-    "config.json", "py_modules/bootstrap/__init__.py",
-    "py_modules/bootstrap/adapters.py", "py_modules/bootstrap/services.py",
-    "py_modules/db/migrations/001_initial.sql", "py_modules/native/libgavel-x86_64-linux.so",
-    "py_modules/_vendor/atlas/__init__.py", "py_modules/_vendor/atlas/data/system_ids.json",
+    "main.py",
+    "plugin.json",
+    "package.json",
+    "dist/index.js",
+    "bin/rom-launcher",
+    "config.json",
+    "py_modules/bootstrap/__init__.py",
+    "py_modules/bootstrap/adapters.py",
+    "py_modules/bootstrap/services.py",
+    "py_modules/db/migrations/001_initial.sql",
+    "py_modules/native/libgavel-x86_64-linux.so",
+    "py_modules/_vendor/atlas/__init__.py",
+    "py_modules/_vendor/atlas/data/system_ids.json",
 )
 
 
