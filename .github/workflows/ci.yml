@@ -1,12 +1,14 @@
-name: Draft plugin release
+name: Release plugin
 
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: Release tag (new, or already pointing at the selected commit)
+      bump:
+        description: Semver level to bump
         required: true
-        type: string
+        default: patch
+        type: choice
+        options: [patch, minor, major]
 
 permissions:
   contents: write
@@ -19,22 +21,23 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      RELEASE_TAG: ${{ inputs.tag }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Validate release target
+      - name: Prepare release version
+        env:
+          BUMP: ${{ inputs.bump }}
         run: |
-          git check-ref-format "refs/tags/$RELEASE_TAG"
-          if tag_commit=$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}" 2>/dev/null); then
-            test "$tag_commit" = "$GITHUB_SHA" || {
-              echo "Release tag points at a different commit"
-              exit 1
-            }
+          test "$GITHUB_REF" = "refs/heads/main" || { echo "Release from main only"; exit 1; }
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          RELEASE_TAG=$(python3 scripts/bump_plugin_version.py "$BUMP")
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            echo "Tag already exists: $RELEASE_TAG"
+            exit 1
           fi
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
 
@@ -53,10 +56,18 @@ jobs:
       - name: Package and validate plugin
         run: python3 scripts/build_plugin_archive.py "$RUNNER_TEMP/Tender.zip"
 
-      - name: Create draft release
+      - name: Commit version and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: release $RELEASE_TAG"
+          git tag "$RELEASE_TAG"
+          git push --atomic origin HEAD:refs/heads/main "refs/tags/$RELEASE_TAG"
+
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$RELEASE_TAG" "$RUNNER_TEMP/Tender.zip" \
-            --target "$GITHUB_SHA" --title "Tender $RELEASE_TAG" \
-            --notes "Tender plugin built from commit $GITHUB_SHA." --draft
+            --verify-tag --title "Tender $RELEASE_TAG" --generate-notes --latest
