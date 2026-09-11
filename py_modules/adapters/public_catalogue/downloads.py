@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import replace
 from urllib.error import URLError
@@ -11,7 +12,10 @@ from models.content_provider import DownloadPlan
 
 from adapters.public_catalogue.http import PublicHttpAdapter, PublicSourceError, checked_url
 from adapters.public_catalogue.page import PublicPage
+from adapters.seven_zip import ensure_7z_available
 from domain.catalogue_matching import base_title, title_key
+
+_logger = logging.getLogger(__name__)
 
 
 def _game_page(url: str, hosts: frozenset[str]) -> str:
@@ -21,7 +25,7 @@ def _game_page(url: str, hosts: frozenset[str]) -> str:
     return url
 
 
-def _zip_plan(provider: str, page_url: str, urls: list[str], host: str) -> DownloadPlan:
+def _archive_plan(provider: str, page_url: str, urls: list[str], host: str) -> DownloadPlan:
     candidates = set()
     for url in urls:
         if urlsplit(url).hostname == host:
@@ -30,15 +34,18 @@ def _zip_plan(provider: str, page_url: str, urls: list[str], host: str) -> Downl
         raise PublicSourceError("The source did not publish one unambiguous download link")
     file_url = candidates.pop()
     filename = unquote(urlsplit(file_url).path.rsplit("/", 1)[-1])
+    archive = filename.rsplit(".", 1)[-1].lower()
     if (
-        not filename.lower().endswith(".zip")
+        archive not in ("zip", "7z")
         or "/" in filename
         or "\\" in filename
         or any(ord(c) < 32 for c in filename)
-        or filename in (".zip", "..zip")
+        or filename in (".zip", "..zip", ".7z", "..7z")
     ):
-        raise PublicSourceError("The source did not publish a supported ZIP filename")
-    return DownloadPlan(provider=provider, page_url=page_url, file_url=file_url, filename=filename)
+        raise PublicSourceError(f"Unsupported archive filename: {filename!r}; supported formats are ZIP and 7z")
+    if archive == "7z":
+        ensure_7z_available()
+    return DownloadPlan(provider=provider, page_url=page_url, file_url=file_url, filename=filename, archive=archive)
 
 
 def _size(page: PublicPage) -> str | None:
@@ -88,6 +95,7 @@ class _SearchDownloads:
             try:
                 plans.append(self.resolve(target))
             except (PublicSourceError, URLError) as exc:
+                _logger.exception("Published download resolution failed: %s", target)
                 errors.append(str(exc))
         if errors and not plans:
             raise PublicSourceError("Published downloads unavailable: " + "; ".join(errors))
@@ -123,7 +131,7 @@ class RomspediaDownloadAdapter(_SearchDownloads):
         if urlsplit(landing_url).path != urlsplit(page_url).path + "/download":
             raise PublicSourceError("Romspedia returned an unexpected download page")
         landing = PublicPage(self._http.read_html(landing_url))
-        plan = _zip_plan(
+        plan = _archive_plan(
             "romspedia",
             page_url,
             [urljoin(landing_url, link["href"]) for link in landing.links if link.get("href")],
@@ -168,4 +176,4 @@ class RomsdlDownloadAdapter(_SearchDownloads):
             for script in landing.scripts
             for match in re.findall(r"""window\.location\.href\s*=\s*(["'])(https://[^"'\\\r\n]+)\1\s*;""", script)
         ]
-        return replace(_zip_plan("romsdl", page_url, targets, self.file_host), size=_size(page))
+        return replace(_archive_plan("romsdl", page_url, targets, self.file_host), size=_size(page))

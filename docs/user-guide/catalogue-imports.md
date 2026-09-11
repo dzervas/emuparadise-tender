@@ -9,7 +9,7 @@ Open **Tender → Catalogue** in Game Mode. RomM is optional for this workflow.
 3. Select a title to find matching Romspedia and RomsDL downloads. Searches match the
    normalized game title and exact platform; they do not promise identical regional
    revisions. Check the filename shown under each option.
-4. Choose a **ZIP – size – provider** button to import and queue that download.
+4. Choose a **ZIP/7Z – size – provider** button to import and queue that download.
    A missing published file size is displayed as **Size unknown**. Unavailable
    providers are reported separately, so another provider can still be used.
 5. RetroDECK gets Tender's existing Steam shortcut and available artwork. EmuDeck
@@ -17,12 +17,12 @@ Open **Tender → Catalogue** in Game Mode. RomM is optional for this workflow.
 
 Only ordinary public search and download pages are used. Provider searches follow
 at most six published search pages and resolve at most two matching files per
-provider. Unsupported platforms, different titles, and non-ZIP downloads are not
+provider. Unsupported platforms, different titles, and unsupported archive formats are not
 offered. No-match and source failures are displayed without inventing a download.
 
 The Downloads page shows transfer progress and supports cancellation. The game’s
 Steam page also provides Tender's download, play and uninstall controls. Public
-sources currently use ZIP transfers without pause/resume; RomM retains its existing
+sources currently use ZIP/7z transfers without pause/resume; RomM retains its existing
 resume behavior. Only use content you have permission to download.
 
 **Delete installed ROM** removes the recorded game file or dedicated game directory.
@@ -82,7 +82,7 @@ library to SRM; automatic ownership migration is not implemented.
 
 The current platform mappings cover GB, GBC, GBA, NES, SNES, N64, DS, GameCube, Wii,
 PS1, PS2, PSP, Mega Drive and Dreamcast. Availability still depends on the installed
-emulator, a matching source platform and a publicly published ZIP download.
+emulator, a matching source platform and a publicly published ZIP/7z download.
 
 ## Build and release
 
@@ -136,8 +136,20 @@ Installation loads and saves are logged at INFO; failed disk writes keep traceba
 An unconfirmed save instructs you to reload and verify the stored choice before retrying.
 
 
-Public catalogue HTTPS and ZIP downloads use the system CA certificates with
+Public catalogue HTTPS and archive downloads use the system CA certificates with
 certificate and hostname verification enabled. Tender logs the selected bundle
 (e.g. `/etc/ssl/certs/ca-certificates.crt` on SteamOS) at startup. Missing OpenSSL
 build-time paths do not prevent loading the OS bundle. If verification still fails,
 the full error remains in the logs; no insecure retry is attempted.
+
+
+Selecting a catalogue title searches every registered download provider automatically;
+there is no provider selector before the search. Each provider then shows its option
+count, no-match result, or error. All matching options appear together, labelled by
+archive type, size and provider, with the published filename underneath. Check that
+filename's region and language: a catalogue's European entry does not guarantee that
+a download provider offers a European release.
+
+ZIP and 7z downloads use the same installed-ROM tracking and deletion workflow.
+7z extraction uses the host's `libarchive.so.13`; extraction rejects links, traversal,
+special files and overwrites. It does not install tools or run archive contents.

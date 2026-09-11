@@ -9,30 +9,34 @@ from adapters.public_catalogue.emuparadise import EmuparadiseCatalogueAdapter
 from adapters.public_catalogue.http import PublicSourceError, checked_url
 
 
-def test_romspedia_follows_published_links_not_ads():
+@pytest.mark.parametrize("archive", ["zip", "7z"])
+def test_romspedia_follows_published_links_not_ads(archive):
     http = Mock()
     http.read_html.side_effect = [
         '<a href="https://ads.example/installer.exe">Download</a>'
         '<a id="btnDownload_slow" href="/roms/gameboy/homebrew/download">Slow</a>',
-        '<a href="https://downloads.romspedia.com/roms/Homebrew (World).zip">click here</a>',
+        f'<a href="https://downloads.romspedia.com/roms/Homebrew (World).{archive}">click here</a>',
     ]
     plan = RomspediaDownloadAdapter(http=http).resolve("https://www.romspedia.com/roms/gameboy/homebrew")
-    assert plan.filename == "Homebrew (World).zip"
-    assert plan.file_url == "https://downloads.romspedia.com/roms/Homebrew%20(World).zip"
+    assert plan.filename == f"Homebrew (World).{archive}"
+    assert plan.archive == archive
+    assert plan.file_url == f"https://downloads.romspedia.com/roms/Homebrew%20(World).{archive}"
     assert plan.provider == "romspedia"
     assert http.read_html.call_args.args == ("https://www.romspedia.com/roms/gameboy/homebrew/download",)
 
 
-def test_romsdl_submits_fresh_form_values_without_executing_javascript():
+@pytest.mark.parametrize("archive", ["zip", "7z"])
+def test_romsdl_submits_fresh_form_values_without_executing_javascript(archive):
     http = Mock()
     http.read_html.side_effect = [
         '<form id="dl" method="post" action="/roms/gameboy/homebrew-1/download">'
         '<input name="rom_url" value="homebrew-1"><input name="console_url" value="gameboy">'
         '<input name="session" value="fresh-token"></form>',
-        '<script>window.location.href = "https://downloads.retrostic.com/roms/Homebrew.zip";</script>',
+        f'<script>window.location.href = "https://downloads.retrostic.com/roms/Homebrew.{archive}";</script>',
     ]
     plan = RomsdlDownloadAdapter(http=http).resolve("https://romsdl.com/roms/gameboy/homebrew-1")
-    assert plan.file_url == "https://downloads.retrostic.com/roms/Homebrew.zip"
+    assert plan.file_url == f"https://downloads.retrostic.com/roms/Homebrew.{archive}"
+    assert plan.archive == archive
     assert http.read_html.call_args.kwargs == {
         "fields": {"rom_url": "homebrew-1", "console_url": "gameboy", "session": "fresh-token"}
     }

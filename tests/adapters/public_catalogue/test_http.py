@@ -27,8 +27,9 @@ def client(response):
     return adapter
 
 
-def test_transfer_reports_bytes_and_disables_unverified_resume(tmp_path):
-    body = b"PK\x03\x04synthetic archive fixture"
+@pytest.mark.parametrize("magic", [b"PK\x03\x04", b"7z\xbc\xaf\x27\x1c"])
+def test_transfer_reports_bytes_and_disables_unverified_resume(tmp_path, magic):
+    body = magic + b"synthetic archive fixture"
     adapter = client(Response(body))
     target = tmp_path / "partial.tmp"
     progress, meta = Mock(), Mock()

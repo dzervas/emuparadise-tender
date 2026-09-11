@@ -16,6 +16,10 @@ import { addShortcut } from "../utils/steamShortcuts";
 import { EmudeckLibrary } from "./EmudeckLibrary";
 import { registerRomMAppId } from "../patches/gameDetailPatch";
 
+function providerLabel(provider: string): string {
+  return ({ romspedia: "Romspedia", romsdl: "RomsDL" } as Record<string, string>)[provider] || provider;
+}
+
 function platformLabel(section: string): string {
   return section.replace(/_(?:ROMs|ISOs)$/, "").replace(/_/g, " ");
 }
@@ -50,6 +54,9 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
   const [results, setResults] = useState<CatalogueSearchItem[]>([]);
   const [selected, setSelected] = useState<CatalogueSearchItem | null>(null);
   const [downloads, setDownloads] = useState<CatalogueDownloadOption[]>([]);
+  const [providerResults, setProviderResults] = useState<
+    NonNullable<Awaited<ReturnType<typeof getCatalogueDownloads>>["provider_results"]>
+  >([]);
   const [romId, setRomId] = useState<number | null>(null);
   const [libraryRevision, setLibraryRevision] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -118,6 +125,7 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
       setResults([]);
       setSelected(null);
       setDownloads([]);
+      setProviderResults([]);
       setRomId(null);
       setMessage("Searching EmuParadise…");
       const result = await catalogueResponse(searchCatalogue(query.trim()));
@@ -129,17 +137,19 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
     run(async () => {
       setSelected(item);
       setDownloads([]);
+      setProviderResults([]);
       setRomId(null);
-      setMessage("Finding downloads…");
+      setMessage("Trying all available download providers…");
       const result = await catalogueResponse(getCatalogueDownloads(item.page_url), 75000);
       if (!result.success) throw new Error(result.message || "Download sources unavailable");
       setDownloads(result.items);
+      setProviderResults(result.provider_results || []);
       setMessage(
         result.items.length
           ? "Check the filename's region and version before downloading."
-          : "No matching public ZIP downloads found.",
+          : "No matching public downloads found.",
       );
-      if (result.messages?.length) setError(result.messages.join(" "));
+      if (!result.provider_results && result.messages?.length) setError(result.messages.join(" "));
     });
   const download = (option: CatalogueDownloadOption) =>
     run(async () => {
@@ -227,6 +237,7 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
               setResults([]);
               setSelected(null);
               setDownloads([]);
+              setProviderResults([]);
               setRomId(null);
               setMessage("");
               setError("");
@@ -256,12 +267,18 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
             </ButtonItem>
           </PanelSectionRow>
         ))}
+        {providerResults.map((result) => (
+          <PanelSectionRow key={result.provider}>
+            <div style={{ fontSize: 12, color: result.success ? undefined : "#ff7070", overflowWrap: "anywhere" }}>
+              {providerLabel(result.provider)}: {result.message}
+            </div>
+          </PanelSectionRow>
+        ))}
         {selected &&
           downloads.map((option) => (
             <PanelSectionRow key={`${option.provider}:${option.page_url}`}>
               <ButtonItem layout="below" disabled={busy} description={option.filename} onClick={() => download(option)}>
-                {option.archive.toUpperCase()} – {option.size || "Size unknown"} –{" "}
-                {option.provider === "romspedia" ? "Romspedia" : "RomsDL"}
+                {option.archive.toUpperCase()} – {option.size || "Size unknown"} – {providerLabel(option.provider)}
               </ButtonItem>
             </PanelSectionRow>
           ))}

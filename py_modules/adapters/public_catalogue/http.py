@@ -120,10 +120,10 @@ class PublicHttpAdapter:
                 "application/json",
                 "text/plain",
             ):
-                raise PublicSourceError("The source returned a page instead of a ZIP file")
-            first = response.read(4)
-            if first != b"PK\x03\x04":
-                raise PublicSourceError("The source did not return a supported ZIP archive")
+                raise PublicSourceError("The source returned a page instead of an archive")
+            first = response.read(6)
+            if not (first.startswith(b"PK\x03\x04") or first == b"7z\xbc\xaf\x27\x1c"):
+                raise PublicSourceError("The source did not return a supported ZIP or 7z archive")
             length = response.headers.get("Content-Length")
             total = int(length) if length else 0
             if on_meta:

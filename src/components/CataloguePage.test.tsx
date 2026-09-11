@@ -254,3 +254,33 @@ it("reports an unconfirmed save instead of waiting forever or claiming success",
   expect(screen.getByText("Save installation choice")).not.toBeDisabled();
   expect(saveEmulatorInstallation).toHaveBeenCalledTimes(1);
 });
+
+it("shows every provider outcome and a 7z option without a downloader selector", async () => {
+  vi.mocked(getCatalogueDownloads).mockResolvedValue({
+    success: true,
+    items: [
+      {
+        filename: "Homebrew (USA).7z",
+        archive: "7z",
+        size: "2 GB",
+        provider: "romsdl",
+        page_url: "https://provider/game",
+      },
+    ],
+    provider_results: [
+      { provider: "romspedia", success: true, count: 0, message: "No matching published downloads" },
+      { provider: "romsdl", success: true, count: 1, message: "1 download option(s)" },
+      { provider: "extra", success: false, count: 0, message: "Source unavailable" },
+    ],
+  });
+  render(<CataloguePage onBack={() => undefined} />);
+  fireEvent.change(screen.getByLabelText("Search games"), { target: { value: "Homebrew" } });
+  fireEvent.click(screen.getByText("Search EmuParadise"));
+  fireEvent.click(await screen.findByText("Homebrew – Nintendo Game Boy"));
+  await screen.findByText("7Z – 2 GB – RomsDL");
+  expect(screen.getByText("Romspedia: No matching published downloads")).toBeInTheDocument();
+  expect(screen.getByText("RomsDL: 1 download option(s)")).toBeInTheDocument();
+  expect(screen.getByText("extra: Source unavailable")).toHaveStyle({ color: "#ff7070" });
+  fireEvent.change(screen.getByLabelText("Search games"), { target: { value: "Other" } });
+  expect(screen.queryByText("RomsDL: 1 download option(s)")).toBeNull();
+});

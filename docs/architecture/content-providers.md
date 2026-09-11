@@ -253,3 +253,25 @@ HTTPS handler so both catalogue pages and ZIP transfers use the same trust polic
 Keep default trust paths when no known bundle exists. Never disable hostname or
 certificate verification, download roots, or inherit RomM's insecure-SSL setting.
 Log the selected system bundle to make device diagnosis possible.
+
+
+## All-provider discovery and 7z downloads
+
+The registry already dispatches every download resolver concurrently. Make that
+observable with INFO start/result logs and one frontend outcome per registered
+provider, including empty matches and failures. Keep working results when another
+provider fails. Retain exact normalized title/year and platform matching; do not substitute
+one year's game.
+
+The reported PS2 titles publish `.7z` links, so extend public download validation
+to ZIP and 7z signatures. Route 7z archives through a small adapter over the system
+`libarchive.so.13`, loaded lazily; keep existing ZIP extraction unchanged. Stream
+regular files into the existing owned installation directory and reuse launch-file
+selection, installation recording and deletion. Reject traversal, links, special
+files, collisions and corrupt archives. No downloaded native code, shell extraction,
+provider bypasses or changes to SSL verification are required.
+
+
+The 7z adapter binds the upstream [libarchive read API](https://github.com/libarchive/libarchive/blob/master/libarchive/archive.h)
+and [entry API](https://github.com/libarchive/libarchive/blob/master/libarchive/archive_entry.h).
+The system library name is listed in the [Arch libarchive package](https://archlinux.org/packages/core/x86_64/libarchive/files/).

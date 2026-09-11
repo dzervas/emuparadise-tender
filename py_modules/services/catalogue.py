@@ -207,6 +207,8 @@ class CatalogueService:
             entry = await self._config.loop.run_in_executor(None, self._config.catalogue.get_entry, catalogue_url)
             platform = next(row[1] for row in PLATFORMS if row[0] == entry.platform)
             providers = list(self._config.resolvers.items())
+            for provider, _ in providers:
+                _logger.info("Searching download provider %s: title=%r platform=%s", provider, entry.title, platform)
             answers = await gather(
                 *[
                     self._config.loop.run_in_executor(None, resolver.search, entry.title, platform)
@@ -214,16 +216,29 @@ class CatalogueService:
                 ],
                 return_exceptions=True,
             )
-            items, messages = [], []
+            items, messages, provider_results = [], [], []
             for (provider, _), answer in zip(providers, answers, strict=True):
                 if isinstance(answer, BaseException):
                     _logger.error(
                         "%s download search failed", provider, exc_info=(type(answer), answer, answer.__traceback__)
                     )
-                    messages.append(f"{provider}: search unavailable ({answer})")
+                    message = str(answer)
+                    messages.append(f"{provider}: search unavailable ({message})")
+                    provider_results.append({"provider": provider, "success": False, "count": 0, "message": message})
                 else:
                     items.extend(asdict(plan) for plan in answer)
-            return {"success": True, "entry": asdict(entry), "items": items, "messages": messages}
+                    message = f"{len(answer)} download option(s)" if answer else "No matching published downloads"
+                    _logger.info("Download provider %s: %s", provider, message)
+                    provider_results.append(
+                        {"provider": provider, "success": True, "count": len(answer), "message": message}
+                    )
+            return {
+                "success": True,
+                "entry": asdict(entry),
+                "items": items,
+                "messages": messages,
+                "provider_results": provider_results,
+            }
         except Exception as exc:
             _logger.exception("Catalogue operation failed")
             return {"success": False, "reason": "source_unavailable", "message": str(exc), "items": []}

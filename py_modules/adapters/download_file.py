@@ -19,6 +19,8 @@ import zipfile
 import zlib
 from typing import TYPE_CHECKING
 
+from adapters.seven_zip import MAGIC as SEVEN_ZIP_MAGIC
+from adapters.seven_zip import extract_7z
 from domain.rom_candidates import DIR, FILE, LINK, Kind
 from lib.path_safety import safe_path_component
 
@@ -343,7 +345,10 @@ class DownloadFileAdapter:
         safe_root: str,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> None:
-        """Extract *archive_path* into *dest_dir* with ZIP-slip protection.
+        """Extract ZIP or 7z into *dest_dir* with path traversal protection.
+
+        7z delegates to the system-library reader with a streaming total of zero
+        until completion. ZIP keeps its preflight and known total below.
 
         Resolves both *dest_dir* and *safe_root* via ``os.path.realpath``
         and verifies that every ZIP member resolves within both before
@@ -356,6 +361,10 @@ class DownloadFileAdapter:
         *progress_callback* left ``None`` the extraction is silent and the
         output files are byte-identical to a plain ``extractall``.
         """
+        with open(archive_path, "rb") as archive_header:
+            if archive_header.read(6) == SEVEN_ZIP_MAGIC:
+                extract_7z(archive_path, dest_dir, safe_root, progress_callback=progress_callback)
+                return
         real_dest = os.path.realpath(dest_dir)
         real_safe = os.path.realpath(safe_root)
         if not (real_dest == real_safe or real_dest.startswith(real_safe + os.sep)):

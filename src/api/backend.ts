@@ -1315,6 +1315,7 @@ export const getCatalogueDownloads = callable<
     success: boolean;
     items: CatalogueDownloadOption[];
     messages?: string[];
+    provider_results?: { provider: string; success: boolean; count: number; message: string }[];
     message?: string;
   }
 >("get_catalogue_downloads");

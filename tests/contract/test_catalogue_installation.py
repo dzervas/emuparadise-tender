@@ -7,14 +7,19 @@ from dataclasses import replace
 from unittest.mock import Mock
 
 import pytest
+from fakes.seven_zip_bytes import VALID
 from models.content_provider import CatalogueEntry, DownloadPlan
 
 from adapters.public_catalogue.router import ContentApiRouter
 from domain.provider_identity import PUBLIC_ID_START
 
 
+@pytest.mark.parametrize("archive", ["zip", "7z"])
 @pytest.mark.parametrize("srm_owned", [False, True])
-async def test_public_import_download_and_delete_preserves_other_files(harness, srm_owned):
+async def test_public_import_download_and_delete_preserves_other_files(harness, srm_owned, archive):
+    system = "ps2" if archive == "7z" else "gb"
+    section = "Sony_Playstation_2_ISOs" if archive == "7z" else "Nintendo_Game_Boy_ROMs"
+    download_section = "playstation-2" if archive == "7z" else "gameboy"
     plugin = harness.plugin
     catalogue = plugin._catalogue_service
     catalogue._config = replace(catalogue._config, shortcut_owner="srm" if srm_owned else "tender")
@@ -22,15 +27,16 @@ async def test_public_import_download_and_delete_preserves_other_files(harness, 
     entry = CatalogueEntry(
         "emuparadise",
         "homebrew-1",
-        "https://www.emuparadise.me/Nintendo_Game_Boy_ROMs/Homebrew/1",
+        f"https://www.emuparadise.me/{section}/Homebrew/1",
         "Homebrew",
-        "Nintendo_Game_Boy_ROMs",
+        section,
     )
     plan = DownloadPlan(
         "romspedia",
-        "https://www.romspedia.com/roms/gameboy/homebrew",
-        "https://downloads.romspedia.com/roms/Homebrew.zip",
-        "Homebrew.zip",
+        f"https://www.romspedia.com/roms/{download_section}/homebrew",
+        f"https://downloads.romspedia.com/roms/Homebrew.{archive}",
+        f"Homebrew.{archive}",
+        archive=archive,
     )
     reader = Mock()
     reader.get_entry.return_value = entry
@@ -44,8 +50,12 @@ async def test_public_import_download_and_delete_preserves_other_files(harness, 
     plugin._download_service._catalogue = router
 
     def transfer(url, dest, callback=None, *, resume=False, on_meta=None):
-        with zipfile.ZipFile(dest, "w") as archive:
-            archive.writestr("Homebrew.gb", b"legal synthetic homebrew fixture")
+        if archive == "7z":
+            with open(dest, "wb") as output:
+                output.write(VALID)
+        else:
+            with zipfile.ZipFile(dest, "w") as zipped:
+                zipped.writestr("Homebrew.gb", b"legal synthetic homebrew fixture")
         if on_meta:
             on_meta(False)
         if callback:
@@ -61,8 +71,8 @@ async def test_public_import_download_and_delete_preserves_other_files(harness, 
     assert again["rom_id"] == rom_id
     assert again["app_id"] == (None if srm_owned else 123456789)
     root = plugin._retrodeck_paths.roms_path()
-    os.makedirs(os.path.join(root, "gb"), exist_ok=True)
-    other = os.path.join(root, "gb", "Other.gb")
+    os.makedirs(os.path.join(root, system), exist_ok=True)
+    other = os.path.join(root, system, "Other.gb")
     with open(other, "wb") as file:
         file.write(b"untouched")
     started = await plugin.start_download(rom_id)
@@ -70,7 +80,7 @@ async def test_public_import_download_and_delete_preserves_other_files(harness, 
     await plugin._download_service._download_tasks[rom_id]
     installed = plugin._download_service.get_installed_rom(rom_id)
     assert installed, plugin._download_service.get_download_queue()
-    assert os.path.commonpath([installed["file_path"], os.path.join(root, "gb")]) == os.path.join(root, "gb")
+    assert os.path.commonpath([installed["file_path"], os.path.join(root, system)]) == os.path.join(root, system)
     assert os.path.isfile(installed["file_path"])
     listed = await plugin.list_catalogue_entries()
     assert any(item["rom_id"] == rom_id and item["installed"] for item in listed["items"])
@@ -108,17 +118,30 @@ async def test_catalogue_download_search_preserves_other_provider_results(harnes
     reader.get_entry.return_value = CatalogueEntry(
         "emuparadise", "1", "https://catalogue/game", "Homebrew", "Nintendo_Game_Boy_ROMs"
     )
-    working, broken = Mock(), Mock()
+    working, broken, empty = Mock(), Mock(), Mock()
+    empty.search.return_value = []
     working.search.return_value = [
         DownloadPlan("romspedia", "https://source/game", "https://source/file", "Homebrew.zip")
     ]
     broken.search.side_effect = ValueError("Source unavailable")
-    catalogue._config = replace(catalogue._config, catalogue=reader, resolvers={"romspedia": working, "romsdl": broken})
-    result = await harness.plugin.get_catalogue_downloads("https://catalogue/game")
+    catalogue._config = replace(
+        catalogue._config, catalogue=reader, resolvers={"romspedia": working, "romsdl": broken, "extra": empty}
+    )
+    with caplog.at_level("INFO"):
+        result = await harness.plugin.get_catalogue_downloads("https://catalogue/game")
     assert result["success"]
     assert result["items"][0]["filename"] == "Homebrew.zip"
     assert "romsdl" in result["messages"][0]
     working.search.assert_called_once_with("Homebrew", "gameboy")
+    broken.search.assert_called_once_with("Homebrew", "gameboy")
+    empty.search.assert_called_once_with("Homebrew", "gameboy")
+    assert [(item["provider"], item["success"], item["count"]) for item in result["provider_results"]] == [
+        ("romspedia", True, 1),
+        ("romsdl", False, 0),
+        ("extra", True, 0),
+    ]
+    assert all(f"Searching download provider {name}:" in caplog.text for name in ("romspedia", "romsdl", "extra"))
+    assert "Download provider extra: No matching published downloads" in caplog.text
     record = next(record for record in caplog.records if "download search failed" in record.message)
     assert record.exc_info is not None
     assert isinstance(record.exc_info[1], ValueError)
