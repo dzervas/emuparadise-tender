@@ -6,21 +6,26 @@ import {
   bindCatalogueShortcut,
   fetchCoverBase64,
   importCatalogueEntry,
-  inspectCatalogueEntry,
   removeRom,
   startDownload,
+  searchCatalogue,
+  getCatalogueDownloads,
 } from "../api/backend";
-import type { CatalogueInspection } from "../api/backend";
+import type { CatalogueSearchItem, CatalogueDownloadOption } from "../api/backend";
 import { addShortcut } from "../utils/steamShortcuts";
 import { EmudeckLibrary } from "./EmudeckLibrary";
 import { registerRomMAppId } from "../patches/gameDetailPatch";
 
+function platformLabel(section: string): string {
+  return section.replace(/_(?:ROMs|ISOs)$/, "").replace(/_/g, " ");
+}
+
 export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
   const [installation, setInstallation] = useState("auto");
-  const [catalogueUrl, setCatalogueUrl] = useState("");
-  const [downloadUrl, setDownloadUrl] = useState("");
-  const [provider, setProvider] = useState("romspedia");
-  const [inspection, setInspection] = useState<CatalogueInspection | null>(null);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<CatalogueSearchItem[]>([]);
+  const [selected, setSelected] = useState<CatalogueSearchItem | null>(null);
+  const [downloads, setDownloads] = useState<CatalogueDownloadOption[]>([]);
   const [romId, setRomId] = useState<number | null>(null);
   const [libraryRevision, setLibraryRevision] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -30,58 +35,82 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
       .then((result) => setInstallation(result.selection))
       .catch((error) => setMessage(String(error)));
   }, []);
-  const changed = () => {
-    setInspection(null);
-    setRomId(null);
-    setMessage("");
-  };
   const run = (action: () => Promise<void>) => {
-    void (async () => {
-      setBusy(true);
-      try {
-        await action();
-      } catch (error) {
-        setMessage(String(error));
-      } finally {
-        setBusy(false);
-      }
-    })();
+    setBusy(true);
+    void action()
+      .catch((error) => setMessage(String(error)))
+      .finally(() => setBusy(false));
   };
-  const inspect = () =>
+  const search = () =>
     run(async () => {
-      const result = await inspectCatalogueEntry(catalogueUrl, provider, downloadUrl);
-      setInspection(result.success ? result : null);
+      setResults([]);
+      setSelected(null);
+      setDownloads([]);
+      setRomId(null);
+      setMessage("Searching EmuParadise…");
+      const result = await searchCatalogue(query.trim());
+      setResults(result.success ? result.items.slice(0, 5) : []);
       setMessage(
         result.success
-          ? "Check the title, platform and file version before importing."
-          : result.message || "Source unavailable",
+          ? result.items.length
+            ? ""
+            : "No supported games found. Try a more specific title."
+          : result.message || "Search failed",
       );
     });
-  const importGame = () =>
+  const choose = (item: CatalogueSearchItem) =>
     run(async () => {
-      const result = await importCatalogueEntry(catalogueUrl, provider, downloadUrl);
-      if (!result.success || !result.rom_id || !result.shortcut) throw new Error(result.message || "Import failed");
-      if (result.shortcut_owner === "srm") {
-        setRomId(result.rom_id);
-        setLibraryRevision((value) => value + 1);
-        setMessage("Imported. Download the ROM, then update your Steam library below.");
-        return;
-      }
-      let appId = result.app_id;
-      if (!appId) {
-        appId = await addShortcut(result.shortcut);
-        if (!appId) throw new Error("Steam could not create the shortcut");
-        const bound = await bindCatalogueShortcut(result.rom_id, appId);
-        if (!bound.success) {
-          SteamClient.Apps.RemoveShortcut(appId);
-          throw new Error(bound.message || "Steam shortcut could not be recorded");
+      setSelected(item);
+      setDownloads([]);
+      setRomId(null);
+      setMessage("Finding downloads…");
+      const result = await getCatalogueDownloads(item.page_url);
+      setDownloads(result.success ? result.items : []);
+      setMessage(
+        result.success
+          ? [
+              result.items.length
+                ? "Check the filename's region and version before downloading."
+                : "No matching public ZIP downloads found.",
+              ...(result.messages || []),
+            ].join(" ")
+          : result.message || "Download sources unavailable",
+      );
+    });
+  const download = (option: CatalogueDownloadOption) =>
+    run(async () => {
+      if (!selected) return;
+      const result = await importCatalogueEntry(selected.page_url, option.provider, option.page_url);
+      if (!result.success || !result.rom_id) throw new Error(result.message || "Import failed");
+      if (result.shortcut_owner !== "srm") {
+        let appId = result.app_id;
+        if (!appId) {
+          if (!result.shortcut) throw new Error("No shortcut data returned");
+          appId = await addShortcut(result.shortcut);
+          if (!appId) throw new Error("Steam could not create the shortcut");
+          const bound = await bindCatalogueShortcut(result.rom_id, appId);
+          if (!bound.success) {
+            SteamClient.Apps.RemoveShortcut(appId);
+            throw new Error(bound.message || "Steam shortcut could not be recorded");
+          }
+        }
+        registerRomMAppId(appId);
+        // Artwork availability must not prevent an otherwise valid download.
+        try {
+          const { base64 } = await fetchCoverBase64(result.rom_id);
+          if (base64) await SteamClient.Apps.SetCustomArtworkForApp(appId, base64, "png", 0);
+        } catch {
+          /* The game remains usable without optional cover art. */
         }
       }
-      registerRomMAppId(appId);
       setRomId(result.rom_id);
-      setMessage("Imported. Download here, or open the game's Steam page.");
-      const { base64 } = await fetchCoverBase64(result.rom_id);
-      if (base64) await SteamClient.Apps.SetCustomArtworkForApp(appId, base64, "png", 0);
+      setLibraryRevision((value) => value + 1);
+      const queued = await startDownload(result.rom_id, false, null, null, false);
+      setMessage(
+        queued.success
+          ? `Download queued. Progress is on Downloads.${result.shortcut_owner === "srm" ? " Update Steam library after it finishes." : ""}`
+          : queued.message || "Download refused",
+      );
     });
   return (
     <>
@@ -103,9 +132,7 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
               { label: "RetroDECK", data: "retrodeck" },
               { label: "EmuDeck", data: "emudeck" },
             ]}
-            onChange={(option) => {
-              setInstallation(option.data);
-            }}
+            onChange={(option) => setInstallation(option.data)}
           />
         </PanelSectionRow>
         <PanelSectionRow>
@@ -127,94 +154,61 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
       <PanelSection title="EmuParadise catalogue">
         <PanelSectionRow>
           <TextField
-            label="Catalogue game URL"
-            value={catalogueUrl}
+            label="Search games"
+            value={query}
             disabled={busy}
-            onChange={(e) => {
-              changed();
-              setCatalogueUrl(e.target.value);
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setResults([]);
+              setSelected(null);
+              setDownloads([]);
+              setRomId(null);
+              setMessage("");
             }}
           />
         </PanelSectionRow>
         <PanelSectionRow>
-          <DropdownItem
-            label="Download provider"
-            selectedOption={provider}
-            disabled={busy}
-            rgOptions={[
-              { label: "Romspedia", data: "romspedia" },
-              { label: "RomsDL", data: "romsdl" },
-            ]}
-            onChange={(option) => {
-              changed();
-              setProvider(option.data);
-            }}
-          />
-        </PanelSectionRow>
-        <PanelSectionRow>
-          <TextField
-            label="Download provider's game URL"
-            value={downloadUrl}
-            disabled={busy}
-            onChange={(e) => {
-              changed();
-              setDownloadUrl(e.target.value);
-            }}
-          />
-        </PanelSectionRow>
-        <PanelSectionRow>
-          <ButtonItem layout="below" disabled={busy || !catalogueUrl || !downloadUrl} onClick={inspect}>
-            Inspect catalogue and download
+          <ButtonItem
+            layout="below"
+            disabled={busy || query.trim().length < 2 || query.trim().length > 100}
+            onClick={search}
+          >
+            Search EmuParadise
           </ButtonItem>
         </PanelSectionRow>
-        {inspection?.success && (
+        {results.map((item) => (
+          <PanelSectionRow key={item.page_url}>
+            <ButtonItem layout="below" disabled={busy} onClick={() => choose(item)}>
+              {item.title} – {platformLabel(item.platform)}
+            </ButtonItem>
+          </PanelSectionRow>
+        ))}
+        {selected &&
+          downloads.map((option) => (
+            <PanelSectionRow key={`${option.provider}:${option.page_url}`}>
+              <ButtonItem layout="below" disabled={busy} description={option.filename} onClick={() => download(option)}>
+                {option.archive.toUpperCase()} – {option.size || "Size unknown"} –{" "}
+                {option.provider === "romspedia" ? "Romspedia" : "RomsDL"}
+              </ButtonItem>
+            </PanelSectionRow>
+          ))}
+        {romId !== null && (
           <PanelSectionRow>
             <ButtonItem
               layout="below"
-              disabled={busy || romId !== null}
-              description={`${inspection.entry?.platform} · ${inspection.download?.filename}`}
-              onClick={importGame}
+              disabled={busy}
+              description="Keeps saves and any Steam shortcut."
+              onClick={() =>
+                run(async () => {
+                  const result = await removeRom(romId);
+                  setMessage(result.success ? "Installed ROM deleted." : result.message || "Deletion failed");
+                  setLibraryRevision((value) => value + 1);
+                })
+              }
             >
-              Import {inspection.entry?.title}
+              Delete installed ROM
             </ButtonItem>
           </PanelSectionRow>
-        )}
-        {romId !== null && (
-          <>
-            <PanelSectionRow>
-              <ButtonItem
-                layout="below"
-                disabled={busy}
-                onClick={() =>
-                  run(async () => {
-                    const result = await startDownload(romId, false, null, null, false);
-                    setMessage(
-                      result.success
-                        ? "Download queued. Progress is on the Downloads page."
-                        : result.message || "Download refused",
-                    );
-                  })
-                }
-              >
-                Download ROM
-              </ButtonItem>
-            </PanelSectionRow>
-            <PanelSectionRow>
-              <ButtonItem
-                layout="below"
-                disabled={busy}
-                description="Keeps saves and the Steam shortcut."
-                onClick={() =>
-                  run(async () => {
-                    const result = await removeRom(romId);
-                    setMessage(result.success ? "Installed ROM deleted." : result.message || "Deletion failed");
-                  })
-                }
-              >
-                Delete installed ROM
-              </ButtonItem>
-            </PanelSectionRow>
-          </>
         )}
         {message && (
           <PanelSectionRow>

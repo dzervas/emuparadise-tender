@@ -4,14 +4,21 @@ Open **Tender → Catalogue** in Game Mode. RomM is optional for this workflow.
 
 1. Choose the emulator installation first. Auto prefers RetroDECK when both are
    detected. Save an explicit choice and restart Decky before importing games.
-2. Enter an EmuParadise game catalogue URL and select Romspedia or RomsDL.
-3. Enter that download provider's game page URL. Use its game page, not an
-   advertisement, direct file URL or countdown page.
-4. Inspect the entry. Check the game title, platform, region and revision against
-   the displayed archive filename; the plugin does not guess cross-site matches.
-5. Import the entry, then download it. For RetroDECK, Tender creates the Steam
-   shortcut and applies available catalogue artwork. For EmuDeck, SRM owns shortcuts;
-   follow the update-and-restart flow below.
+2. Enter a game title under **EmuParadise catalogue** and choose **Search EmuParadise**.
+   The section shows at most five supported catalogue entries as **game – platform**.
+3. Select a title to find matching Romspedia and RomsDL downloads. Searches match the
+   normalized game title and exact platform; they do not promise identical regional
+   revisions. Check the filename shown under each option.
+4. Choose a **ZIP – size – provider** button to import and queue that download.
+   A missing published file size is displayed as **Size unknown**. Unavailable
+   providers are reported separately, so another provider can still be used.
+5. RetroDECK gets Tender's existing Steam shortcut and available artwork. EmuDeck
+   keeps SRM ownership; update its Steam library after the download finishes.
+
+Only ordinary public search and download pages are used. Provider searches follow
+at most six published search pages and resolve at most two matching files per
+provider. Unsupported platforms, different titles, and non-ZIP downloads are not
+offered. No-match and source failures are displayed without inventing a download.
 
 The Downloads page shows transfer progress and supports cancellation. The game’s
 Steam page also provides Tender's download, play and uninstall controls. Public
@@ -92,3 +99,12 @@ builds the ZIP, then atomically pushes the version commit and `v` tag and publis
 a normal GitHub release with generated notes. Release from `main` only. Pushes and
 pull requests do not run CI. Steam/Decky controller behavior and real emulator launches
 still require a device check before publishing a release.
+
+
+## Updating this fork
+
+Install the new ZIP or its GitHub release asset URL again through Decky. The plugin
+has no GitHub auto-updater. Decky's normal update list comes from its configured
+plugin store and matches plugins by name. This fork still uses the name Tender, so
+a store update can replace it with upstream Tender; use this fork's release assets
+for now. A GitHub release alone does not register the fork with Decky's store.

@@ -1,11 +1,17 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CataloguePage } from "./CataloguePage";
-import { bindCatalogueShortcut, importCatalogueEntry, inspectCatalogueEntry } from "../api/backend";
+import {
+  bindCatalogueShortcut,
+  importCatalogueEntry,
+  searchCatalogue,
+  getCatalogueDownloads,
+  startDownload,
+} from "../api/backend";
 import { addShortcut } from "../utils/steamShortcuts";
 
 vi.mock("@decky/ui", () => ({
-  PanelSection: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
+  PanelSection: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   PanelSectionRow: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   ButtonItem: ({
     children,
@@ -24,7 +30,8 @@ vi.mock("@decky/ui", () => ({
   DropdownItem: () => <div />,
 }));
 vi.mock("../api/backend", () => ({
-  inspectCatalogueEntry: vi.fn(),
+  searchCatalogue: vi.fn(),
+  getCatalogueDownloads: vi.fn(),
   importCatalogueEntry: vi.fn(),
   bindCatalogueShortcut: vi.fn(),
   getEmulatorInstallation: vi.fn(async () => ({ selection: "auto" })),
@@ -40,10 +47,21 @@ vi.mock("../patches/gameDetailPatch", () => ({ registerRomMAppId: vi.fn() }));
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal("SteamClient", { Apps: { RemoveShortcut: vi.fn(), SetCustomArtworkForApp: vi.fn() } });
-  vi.mocked(inspectCatalogueEntry).mockResolvedValue({
+  vi.mocked(searchCatalogue).mockResolvedValue({
     success: true,
-    entry: { title: "Homebrew", platform: "GB", description: "" },
-    download: { filename: "Homebrew.zip", provider: "romspedia" },
+    items: [{ title: "Homebrew", platform: "Nintendo_Game_Boy_ROMs", page_url: "https://catalogue/game" }],
+  });
+  vi.mocked(getCatalogueDownloads).mockResolvedValue({
+    success: true,
+    items: [
+      {
+        filename: "Homebrew.zip",
+        archive: "zip",
+        size: "20 KB",
+        provider: "romspedia",
+        page_url: "https://provider/game",
+      },
+    ],
   });
   vi.mocked(importCatalogueEntry).mockResolvedValue({
     success: true,
@@ -59,44 +77,66 @@ beforeEach(() => {
     },
   });
   vi.mocked(addShortcut).mockResolvedValue(123);
+  vi.mocked(bindCatalogueShortcut).mockResolvedValue({ success: true, message: "" });
+  vi.mocked(startDownload).mockResolvedValue({ success: true, message: "" });
 });
 afterEach(() => vi.unstubAllGlobals());
 
-async function inspect() {
+async function select() {
   render(<CataloguePage onBack={() => undefined} />);
-  fireEvent.change(screen.getByLabelText("Catalogue game URL"), { target: { value: "https://catalogue/game" } });
-  fireEvent.change(screen.getByLabelText("Download provider's game URL"), {
-    target: { value: "https://provider/game" },
-  });
-  fireEvent.click(screen.getByText("Inspect catalogue and download"));
-  return screen.findByText("Import Homebrew");
+  fireEvent.change(screen.getByLabelText("Search games"), { target: { value: "Homebrew" } });
+  fireEvent.click(screen.getByText("Search EmuParadise"));
+  fireEvent.click(await screen.findByText("Homebrew – Nintendo Game Boy"));
+  return screen.findByText("ZIP – 20 KB – Romspedia");
 }
 
-describe("catalogue import", () => {
-  it("removes a newly created shortcut if its durable binding fails", async () => {
-    vi.mocked(bindCatalogueShortcut).mockResolvedValue({ success: false, message: "Binding refused" });
-    fireEvent.click(await inspect());
-    await screen.findByText("Error: Binding refused");
-    expect(SteamClient.Apps.RemoveShortcut).toHaveBeenCalledWith(123);
-    expect(screen.queryByText("Download ROM")).toBeNull();
-  });
-  it("invalidates inspection when the user changes the source", async () => {
-    await inspect();
-    await waitFor(() => expect(screen.getByLabelText("Catalogue game URL")).not.toBeDisabled());
-    fireEvent.change(screen.getByLabelText("Download provider's game URL"), {
-      target: { value: "https://provider/different" },
-    });
-    expect(screen.queryByText("Import Homebrew")).toBeNull();
-    expect(importCatalogueEntry).not.toHaveBeenCalled();
-  });
+it("searches, shows download metadata, and downloads the selected source", async () => {
+  fireEvent.click(await select());
+  await screen.findByText("Download queued. Progress is on Downloads.");
+  expect(searchCatalogue).toHaveBeenCalledWith("Homebrew");
+  expect(importCatalogueEntry).toHaveBeenCalledWith("https://catalogue/game", "romspedia", "https://provider/game");
+  expect(startDownload).toHaveBeenCalledWith(4503599627370496, false, null, null, false);
 });
-
-it("leaves EmuDeck shortcuts and artwork to SRM", async () => {
-  const result = await vi.mocked(importCatalogueEntry).getMockImplementation()!("", "", "");
-  vi.mocked(importCatalogueEntry).mockResolvedValue({ ...result, shortcut_owner: "srm" });
-  fireEvent.click(await inspect());
-  await screen.findByText("Imported. Download the ROM, then update your Steam library below.");
+it("rolls back a new shortcut and does not download if binding fails", async () => {
+  vi.mocked(bindCatalogueShortcut).mockResolvedValue({ success: false, message: "Binding refused" });
+  fireEvent.click(await select());
+  await screen.findByText("Error: Binding refused");
+  expect(SteamClient.Apps.RemoveShortcut).toHaveBeenCalledWith(123);
+  expect(startDownload).not.toHaveBeenCalled();
+});
+it("keeps EmuDeck shortcut ownership with SRM", async () => {
+  vi.mocked(importCatalogueEntry).mockResolvedValue({ success: true, rom_id: 4503599627370496, shortcut_owner: "srm" });
+  fireEvent.click(await select());
+  await screen.findByText("Download queued. Progress is on Downloads. Update Steam library after it finishes.");
   expect(addShortcut).not.toHaveBeenCalled();
-  expect(bindCatalogueShortcut).not.toHaveBeenCalled();
-  expect(SteamClient.Apps.SetCustomArtworkForApp).not.toHaveBeenCalled();
+  expect(startDownload).toHaveBeenCalledOnce();
+});
+it("clears old sources after the query changes", async () => {
+  await select();
+  fireEvent.change(screen.getByLabelText("Search games"), { target: { value: "Other" } });
+  expect(screen.queryByText("ZIP – 20 KB – Romspedia")).toBeNull();
+  expect(screen.queryByText("Homebrew – Nintendo Game Boy")).toBeNull();
+});
+it("limits the result list to five games", async () => {
+  vi.mocked(searchCatalogue).mockResolvedValue({
+    success: true,
+    items: Array.from({ length: 7 }, (_, i) => ({
+      title: `Game ${i}`,
+      platform: "GB_ROMs",
+      page_url: `https://catalogue/${i}`,
+    })),
+  });
+  render(<CataloguePage onBack={() => undefined} />);
+  fireEvent.change(screen.getByLabelText("Search games"), { target: { value: "Game" } });
+  fireEvent.click(screen.getByText("Search EmuParadise"));
+  await screen.findByText("Game 0 – GB");
+  expect(screen.getAllByText(/Game \d – GB/)).toHaveLength(5);
+});
+it("surfaces search failure instead of retaining previous choices", async () => {
+  vi.mocked(searchCatalogue).mockResolvedValue({ success: false, items: [], message: "Source unavailable" });
+  render(<CataloguePage onBack={() => undefined} />);
+  fireEvent.change(screen.getByLabelText("Search games"), { target: { value: "Game" } });
+  fireEvent.click(screen.getByText("Search EmuParadise"));
+  await screen.findByText("Source unavailable");
+  expect(getCatalogueDownloads).not.toHaveBeenCalled();
 });

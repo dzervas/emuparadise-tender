@@ -6,10 +6,14 @@ from models.content_provider import CatalogueEntry, DownloadPlan
 
 
 class CatalogueReader(Protocol):
+    def search(self, query: str) -> list[CatalogueEntry]: ...
+
     def get_entry(self, page_url: str) -> CatalogueEntry: ...
 
 
 class DownloadResolverReader(Protocol):
+    def search(self, title: str, platform: str) -> list[DownloadPlan]: ...
+
     def resolve(self, page_url: str) -> DownloadPlan: ...
 
 

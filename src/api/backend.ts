@@ -1283,3 +1283,33 @@ export const listCatalogueEntries = callable<[], { success: boolean; items: Cata
   "list_catalogue_entries",
 );
 export const importRommCatalogueEntry = callable<[number], CatalogueImport>("import_romm_catalogue_entry");
+
+export interface CatalogueSearchItem {
+  title: string;
+  platform: string;
+  page_url: string;
+}
+export interface CatalogueDownloadOption {
+  provider: string;
+  page_url: string;
+  filename: string;
+  archive: string;
+  size: string | null;
+}
+export const searchCatalogue = callable<
+  [string],
+  {
+    success: boolean;
+    items: CatalogueSearchItem[];
+    message?: string;
+  }
+>("search_catalogue");
+export const getCatalogueDownloads = callable<
+  [string],
+  {
+    success: boolean;
+    items: CatalogueDownloadOption[];
+    messages?: string[];
+    message?: string;
+  }
+>("get_catalogue_downloads");

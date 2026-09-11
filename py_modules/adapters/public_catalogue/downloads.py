@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import unquote, urljoin, urlsplit
+from dataclasses import replace
+from urllib.error import URLError
+from urllib.parse import parse_qs, unquote, urlencode, urljoin, urlsplit
 
 from models.content_provider import DownloadPlan
 
 from adapters.public_catalogue.http import PublicHttpAdapter, PublicSourceError, checked_url
 from adapters.public_catalogue.page import PublicPage
+from domain.catalogue_matching import base_title, title_key
 
 
 def _game_page(url: str, hosts: frozenset[str]) -> str:
@@ -38,11 +41,70 @@ def _zip_plan(provider: str, page_url: str, urls: list[str], host: str) -> Downl
     return DownloadPlan(provider=provider, page_url=page_url, file_url=file_url, filename=filename)
 
 
-class RomspediaDownloadAdapter:
+def _size(page: PublicPage) -> str | None:
+    match = re.search(r"(?:File\s+Size|Size)\s*:?\s*([0-9]+(?:[.,][0-9]+)?\s*(?:[KMG]i?B))\b", page.text, re.I)
+    return match[1].strip() if match else None
+
+
+class _SearchDownloads:
+    page_hosts: frozenset[str]
+    origin: str
+
+    def search(self, title: str, platform: str) -> list[DownloadPlan]:
+        url = self.origin + "/search?" + urlencode({"search_term_string": base_title(title)})
+        urls = []
+        for number in range(1, 7):
+            page = PublicPage(self._http.read_html(url))
+            for link in page.links:
+                if title_key(link.get("title", "")) != title_key(title):
+                    continue
+                try:
+                    target = _game_page(urljoin(url, link.get("href", "")), self.page_hosts)
+                except ValueError:
+                    continue
+                if urlsplit(target).path.split("/")[2] == platform and target not in urls:
+                    urls.append(target)
+            if urls:
+                break
+            next_page = None
+            for link in page.links:
+                try:
+                    target = checked_url(urljoin(url, link.get("href", "")), self.page_hosts)
+                except ValueError:
+                    continue
+                parsed = urlsplit(target)
+                if parsed.path == "/search" and parse_qs(parsed.query) == {
+                    "search_term_string": [base_title(title)],
+                    "currentpage": [str(number + 1)],
+                }:
+                    next_page = target
+                    break
+            if next_page is None:
+                break
+            url = next_page
+        plans = []
+        errors = []
+        for target in urls[:2]:
+            try:
+                plans.append(self.resolve(target))
+            except (PublicSourceError, URLError) as exc:
+                errors.append(str(exc))
+        if errors and not plans:
+            raise PublicSourceError("Published downloads unavailable: " + "; ".join(errors))
+        return plans
+
+    def resolve(self, page_url: str) -> DownloadPlan:
+        raise NotImplementedError
+
+    _http: PublicHttpAdapter
+
+
+class RomspediaDownloadAdapter(_SearchDownloads):
     """Resolve only the game page's published slow-download link and file link."""
 
     page_hosts = frozenset({"www.romspedia.com", "romspedia.com"})
     file_host = "downloads.romspedia.com"
+    origin = "https://www.romspedia.com"
 
     def __init__(self, *, http: PublicHttpAdapter) -> None:
         self._http = http
@@ -61,19 +123,22 @@ class RomspediaDownloadAdapter:
         if urlsplit(landing_url).path != urlsplit(page_url).path + "/download":
             raise PublicSourceError("Romspedia returned an unexpected download page")
         landing = PublicPage(self._http.read_html(landing_url))
-        return _zip_plan(
+        plan = _zip_plan(
             "romspedia",
             page_url,
             [urljoin(landing_url, link["href"]) for link in landing.links if link.get("href")],
             self.file_host,
         )
 
+        return replace(plan, size=_size(page))
 
-class RomsdlDownloadAdapter:
+
+class RomsdlDownloadAdapter(_SearchDownloads):
     """Submit the visible download form and read its literal countdown target."""
 
     page_hosts = frozenset({"romsdl.com", "www.romsdl.com"})
     file_host = "downloads.retrostic.com"
+    origin = "https://romsdl.com"
 
     def __init__(self, *, http: PublicHttpAdapter) -> None:
         self._http = http
@@ -103,4 +168,4 @@ class RomsdlDownloadAdapter:
             for script in landing.scripts
             for match in re.findall(r"""window\.location\.href\s*=\s*(["'])(https://[^"'\\\r\n]+)\1\s*;""", script)
         ]
-        return _zip_plan("romsdl", page_url, targets, self.file_host)
+        return replace(_zip_plan("romsdl", page_url, targets, self.file_host), size=_size(page))

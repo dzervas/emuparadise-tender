@@ -207,3 +207,16 @@ including unbound installation/deletion, preflight refusals, restart confirmatio
 writer timeout cleanup, and session recovery failures. Frozen dependency installation,
 frontend compilation, and the 362-file ZIP validation passed locally. No GitHub
 workflow was dispatched and no real Steam session was stopped during these checks.
+
+
+## Search-driven catalogue selection
+
+The QAM Catalogue section replaces both URL fields with title search and a maximum
+of five EmuParadise game/platform results. Selecting an entry queries the two download
+providers independently. Adapters match normalized titles plus exact platform paths,
+follow bounded published pagination, and resolve the existing public ZIP flows before
+returning options. File size is provider metadata or unknown, never copied from a
+different catalogue's file. The chosen option uses the existing import and download
+pipeline, including durable source bindings and installation-specific shortcut ownership.
+One provider's failure does not discard the other's results. No full-page browser,
+new updater, or change to the release workflow is included in this follow-up.

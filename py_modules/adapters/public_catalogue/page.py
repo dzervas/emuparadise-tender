@@ -10,6 +10,9 @@ class PublicPage(HTMLParser):
         self.forms: list[tuple[dict[str, str], dict[str, str]]] = []
         self.meta: dict[str, str] = {}
         self.scripts: list[str] = []
+        self.text = ""
+        self._link = None
+        self._style = False
         self.heading = ""
         self._heading = False
         self._script = False
@@ -20,7 +23,9 @@ class PublicPage(HTMLParser):
     def handle_starttag(self, tag, attrs):
         values = {key: value or "" for key, value in attrs}
         if tag == "a":
+            values["text"] = ""
             self.links.append(values)
+            self._link = values
         elif tag == "form":
             self._form = {}
             self.forms.append((values, self._form))
@@ -32,9 +37,15 @@ class PublicPage(HTMLParser):
             self._heading = True
         elif tag == "script":
             self._script = True
+        elif tag == "style":
+            self._style = True
 
     def handle_endtag(self, tag):
-        if tag == "form":
+        if tag == "a":
+            self._link = None
+        elif tag == "style":
+            self._style = False
+        elif tag == "form":
             self._form = None
         elif tag == "h1":
             self._heading = False
@@ -42,6 +53,10 @@ class PublicPage(HTMLParser):
             self._script = False
 
     def handle_data(self, data):
+        if not self._script and not self._style:
+            self.text += " " + data.strip()
+            if self._link is not None:
+                self._link["text"] += data
         if self._heading:
             self.heading += data
         if self._script:

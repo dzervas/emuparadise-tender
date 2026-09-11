@@ -1171,3 +1171,11 @@ class Plugin:
     @srm_update_blocked
     async def import_romm_catalogue_entry(self, rom_id: int) -> dict[str, Any]:
         return await self._catalogue_service.import_romm(rom_id)
+
+    @migration_blocked
+    async def search_catalogue(self, query: str) -> dict[str, Any]:
+        return await self._catalogue_service.search(query)
+
+    @migration_blocked
+    async def get_catalogue_downloads(self, catalogue_url: str) -> dict[str, Any]:
+        return await self._catalogue_service.downloads_for(catalogue_url)

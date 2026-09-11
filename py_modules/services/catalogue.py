@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from asyncio import gather
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any
 
-from domain.catalogue_platforms import catalogue_system
+from domain.catalogue_platforms import PLATFORMS, catalogue_system
 from domain.rom import Rom
 from domain.rom_metadata_mapping import build_rom_metadata
 from domain.shortcut_data import build_shortcuts_data
@@ -184,3 +185,32 @@ class CatalogueService:
     def _has_bound_io(self) -> bool:
         with self._config.uow_factory() as uow:
             return any(rom.shortcut_app_id is not None for rom in uow.roms.iter_all())
+
+    async def search(self, query: str) -> dict[str, Any]:
+        try:
+            entries = await self._config.loop.run_in_executor(None, self._config.catalogue.search, query)
+            return {"success": True, "items": [asdict(entry) for entry in entries[:5]]}
+        except Exception as exc:
+            return {"success": False, "reason": "search_failed", "message": str(exc), "items": []}
+
+    async def downloads_for(self, catalogue_url: str) -> dict[str, Any]:
+        try:
+            entry = await self._config.loop.run_in_executor(None, self._config.catalogue.get_entry, catalogue_url)
+            platform = next(row[1] for row in PLATFORMS if row[0] == entry.platform)
+            providers = list(self._config.resolvers.items())
+            answers = await gather(
+                *[
+                    self._config.loop.run_in_executor(None, resolver.search, entry.title, platform)
+                    for _, resolver in providers
+                ],
+                return_exceptions=True,
+            )
+            items, messages = [], []
+            for (provider, _), answer in zip(providers, answers, strict=True):
+                if isinstance(answer, BaseException):
+                    messages.append(f"{provider}: search unavailable ({answer})")
+                else:
+                    items.extend(asdict(plan) for plan in answer)
+            return {"success": True, "entry": asdict(entry), "items": items, "messages": messages}
+        except Exception as exc:
+            return {"success": False, "reason": "source_unavailable", "message": str(exc), "items": []}

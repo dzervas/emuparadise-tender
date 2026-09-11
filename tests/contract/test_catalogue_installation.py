@@ -93,3 +93,22 @@ async def test_installation_change_requires_restart_before_new_downloads(harness
     assert blocked["reason"] == "restart_required"
     blocked_import = await plugin.import_catalogue_entry("unused", "romspedia", "unused")
     assert blocked_import["reason"] == "restart_required"
+
+
+async def test_catalogue_download_search_preserves_other_provider_results(harness):
+    catalogue = harness.plugin._catalogue_service
+    reader = Mock()
+    reader.get_entry.return_value = CatalogueEntry(
+        "emuparadise", "1", "https://catalogue/game", "Homebrew", "Nintendo_Game_Boy_ROMs"
+    )
+    working, broken = Mock(), Mock()
+    working.search.return_value = [
+        DownloadPlan("romspedia", "https://source/game", "https://source/file", "Homebrew.zip")
+    ]
+    broken.search.side_effect = ValueError("Source unavailable")
+    catalogue._config = replace(catalogue._config, catalogue=reader, resolvers={"romspedia": working, "romsdl": broken})
+    result = await harness.plugin.get_catalogue_downloads("https://catalogue/game")
+    assert result["success"]
+    assert result["items"][0]["filename"] == "Homebrew.zip"
+    assert "romsdl" in result["messages"][0]
+    working.search.assert_called_once_with("Homebrew", "gameboy")

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlencode, urljoin, urlsplit
 
 from models.content_provider import CatalogueEntry
 
 from adapters.public_catalogue.http import PublicHttpAdapter, PublicSourceError, checked_url
 from adapters.public_catalogue.page import PublicPage
+from domain.catalogue_matching import title_key
+from domain.catalogue_platforms import PLATFORMS
 
 
 class EmuparadiseCatalogueAdapter:
@@ -38,3 +40,27 @@ class EmuparadiseCatalogueAdapter:
             cover_url=cover,
             description=page.meta.get("og:description", ""),
         )
+
+    def search(self, query: str) -> list[CatalogueEntry]:
+        query = query.strip()
+        if not 2 <= len(query) <= 100:
+            raise PublicSourceError("Search with 2-100 characters")
+        url = "https://www.emuparadise.me/roms/search.php?" + urlencode({"query": query})
+        page = PublicPage(self._http.read_html(url))
+        supported = {row[0] for row in PLATFORMS}
+        results = {}
+        for link in page.links:
+            if not link.get("data-filter"):
+                continue
+            try:
+                target = checked_url(urljoin(url, link.get("href", "")), self.page_hosts)
+            except ValueError:
+                continue
+            match = re.fullmatch(r"/([^/]+)/[^/]+/([0-9]+)", unquote(urlsplit(target).path))
+            if not match or match[1] not in supported or urlsplit(target).query:
+                continue
+            title = re.sub(r"\s+(?:ROM|ISO)\s*$", "", link["text"].strip())
+            if title:
+                results.setdefault(match[2], CatalogueEntry("emuparadise", match[2], target, title, match[1]))
+        ranked = sorted(results.values(), key=lambda item: (title_key(item.title) != title_key(query),))
+        return ranked[:5]
