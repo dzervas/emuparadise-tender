@@ -1,6 +1,6 @@
 """Minimal structural HTML parsing; scripts are data and never executed."""
 
-from html.parser import HTMLParser
+from _vendor.cpython_html.parser import HTMLParser
 
 
 class PublicPage(HTMLParser):

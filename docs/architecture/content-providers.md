@@ -220,3 +220,24 @@ different catalogue's file. The chosen option uses the existing import and downl
 pipeline, including durable source bindings and installation-specific shortcut ownership.
 One provider's failure does not discard the other's results. No full-page browser,
 new updater, or change to the release workflow is included in this follow-up.
+
+
+## Frozen-runtime HTML dependency
+
+Decky's Python bundle omits `html.parser`, so importing the catalogue adapter can
+prevent the entire backend from loading. Keep the existing structural parser and
+bundle CPython's pure-Python HTML package plus `_markupbase` under
+`_vendor.cpython_html`, with relative internal imports, its license, provenance and
+a checksum manifest. `PublicPage` changes only its parser import. No regex HTML
+replacement or dependency on Decky's optional standard-library wrappers is needed.
+Validate the complete bootstrap import and representative parsing in a fresh process
+that refuses the absent standard-library modules; ordinary CPython tests alone did
+not catch either this failure or the earlier `xml.etree` failure.
+
+
+Validation against the module inventory of Decky's released v3.2.8 PluginLoader
+confirmed that `html.parser`, `_markupbase`, and `xml.etree` are absent;
+`unicodedata`, `http.cookiejar`, `urllib.request`, and `pyexpat` are present.
+The regression test blocks all three absent modules while importing the complete
+bootstrap and parsing entities, nested links, download forms and inert scripts.
+This checks the known runtime gap without claiming a Steam Deck device test.

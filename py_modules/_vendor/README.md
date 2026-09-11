@@ -204,3 +204,34 @@ there it costs a whole tree rather than one file: the markdown formatter is conf
 as an explicit path it reformats the TypeScript that prettier owns — 186 files in one command, every one a real diff,
 and `pnpm format:check` is the only thing that notices. Hand a formatter the paths it owns, never a directory that
 merely contains them.
+
+
+## cpython_html
+
+- **Upstream:** https://github.com/python/cpython/tree/v3.11.14/Lib/html
+- **Version:** CPython `v3.11.14`, Python 3.11-compatible pure-Python sources.
+- **Files:** `Lib/html/{__init__,parser,entities}.py`, `Lib/_markupbase.py`, and
+  the repository's `LICENSE` (retained inside this package).
+- **Local patches:** three import relocations only: `html.entities` to `.entities`,
+  `import _markupbase` to `from . import _markupbase`, and `from html import unescape`
+  to `from . import unescape`. Parser behavior is unchanged.
+- **Manifest:** generated here from the relocated copy, including its license.
+
+Decky v3.2.8's released PluginLoader contains `html` and `html.entities` but omits
+`html.parser` and `_markupbase`. Bundle the parser's full pure-Python dependency
+closure so neither its startup nor entity handling depends on these optional modules.
+The only remaining external import is `re`, already required throughout Tender.
+Use `_vendor.cpython_html.parser` directly; do not modify global `sys.modules`.
+
+To update, download these five files from a reviewed CPython tag, apply only the
+three import relocations above, then regenerate `cpython_html.SHA256SUMS` and run
+the vendored-tree check and catalogue bootstrap/parser regression test. Original
+`v3.11.14` SHA-256 hashes before relocation:
+
+```text
+923d82d821e75e8d235392c10c145ab8587927b3faf9c952bbd48081eebd8522  Lib/html/__init__.py
+7d0e6be5cc76bea299636c3bc0d7b88db963db58d3faf3321e4b94394d85dc2f  Lib/html/parser.py
+282b7cdd567bbbf3d7d7ccd49fae1d3ebc7f7ab64058d781193620913773731b  Lib/html/entities.py
+cb14dd6f2e2439eb70b806cd49d19911363d424c2b6b9f4b73c9c08022d47030  Lib/_markupbase.py
+3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf  LICENSE
+```
