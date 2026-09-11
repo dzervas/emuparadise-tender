@@ -95,7 +95,7 @@ async def test_installation_change_requires_restart_before_new_downloads(harness
     assert blocked_import["reason"] == "restart_required"
 
 
-async def test_catalogue_download_search_preserves_other_provider_results(harness):
+async def test_catalogue_download_search_preserves_other_provider_results(harness, caplog):
     catalogue = harness.plugin._catalogue_service
     reader = Mock()
     reader.get_entry.return_value = CatalogueEntry(
@@ -112,3 +112,9 @@ async def test_catalogue_download_search_preserves_other_provider_results(harnes
     assert result["items"][0]["filename"] == "Homebrew.zip"
     assert "romsdl" in result["messages"][0]
     working.search.assert_called_once_with("Homebrew", "gameboy")
+    record = next(record for record in caplog.records if "download search failed" in record.message)
+    assert record.exc_info is not None
+    assert isinstance(record.exc_info[1], ValueError)
+    assert record.exc_info[2] is not None
+    assert "Traceback (most recent call last)" in caplog.text
+    assert "ValueError: Source unavailable" in caplog.text

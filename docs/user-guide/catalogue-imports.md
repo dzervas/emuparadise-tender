@@ -108,3 +108,20 @@ has no GitHub auto-updater. Decky's normal update list comes from its configured
 plugin store and matches plugins by name. This fork still uses the name Tender, so
 a store update can replace it with upstream Tender; use this fork's release assets
 for now. A GitHub release alone does not register the fork with Decky's store.
+
+
+## Catalogue errors and logs
+
+Failed searches appear in red below Search EmuParadise. An unanswered backend call
+stops waiting after 30 seconds (75 seconds for download-source discovery), so the
+page allows another attempt. If the backend failed to start, it cannot return its
+startup exception to the page; the message directs you to the logs instead.
+Runtime catalogue failures retain their tracebacks in backend logs.
+
+On a standard Steam Deck install, timestamped Tender logs are in
+`/home/deck/homebrew/logs/Tender/`. Startup failures are also in the Decky journal:
+
+```sh
+sudo journalctl -u plugin_loader -b -n 150 --no-pager
+sudo journalctl -u plugin_loader -f
+```

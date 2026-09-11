@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from asyncio import gather
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any
@@ -23,6 +24,9 @@ if TYPE_CHECKING:
         SystemResolver,
         UnitOfWorkFactory,
     )
+
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -49,6 +53,7 @@ class CatalogueService:
                 None, self._inspect_io, catalogue_url, provider, download_url
             )
         except Exception as exc:
+            _logger.exception("Catalogue operation failed")
             return {"success": False, "reason": "source_unavailable", "message": str(exc)}
 
     def _inspect_io(self, catalogue_url: str, provider: str, download_url: str) -> dict[str, Any]:
@@ -64,6 +69,7 @@ class CatalogueService:
         try:
             return await self._config.loop.run_in_executor(None, self._import_io, catalogue_url, provider, download_url)
         except Exception as exc:
+            _logger.exception("Catalogue operation failed")
             return {"success": False, "reason": "import_failed", "message": str(exc)}
 
     def _import_io(self, catalogue_url: str, provider: str, download_url: str) -> dict[str, Any]:
@@ -117,6 +123,7 @@ class CatalogueService:
             await self._config.loop.run_in_executor(None, self._bind_io, rom_id, app_id)
             return {"success": True}
         except Exception as exc:
+            _logger.exception("Catalogue operation failed")
             return {"success": False, "reason": "shortcut_bind_failed", "message": str(exc)}
 
     def _bind_io(self, rom_id: int, app_id: int) -> None:
@@ -153,6 +160,7 @@ class CatalogueService:
         try:
             return await self._config.loop.run_in_executor(None, self._import_romm_io, rom_id)
         except Exception as exc:
+            _logger.exception("Catalogue operation failed")
             return {"success": False, "reason": "import_failed", "message": str(exc)}
 
     def _import_romm_io(self, rom_id: int) -> dict[str, Any]:
@@ -191,6 +199,7 @@ class CatalogueService:
             entries = await self._config.loop.run_in_executor(None, self._config.catalogue.search, query)
             return {"success": True, "items": [asdict(entry) for entry in entries[:5]]}
         except Exception as exc:
+            _logger.exception("Catalogue operation failed")
             return {"success": False, "reason": "search_failed", "message": str(exc), "items": []}
 
     async def downloads_for(self, catalogue_url: str) -> dict[str, Any]:
@@ -208,9 +217,13 @@ class CatalogueService:
             items, messages = [], []
             for (provider, _), answer in zip(providers, answers, strict=True):
                 if isinstance(answer, BaseException):
+                    _logger.error(
+                        "%s download search failed", provider, exc_info=(type(answer), answer, answer.__traceback__)
+                    )
                     messages.append(f"{provider}: search unavailable ({answer})")
                 else:
                     items.extend(asdict(plan) for plan in answer)
             return {"success": True, "entry": asdict(entry), "items": items, "messages": messages}
         except Exception as exc:
+            _logger.exception("Catalogue operation failed")
             return {"success": False, "reason": "source_unavailable", "message": str(exc), "items": []}

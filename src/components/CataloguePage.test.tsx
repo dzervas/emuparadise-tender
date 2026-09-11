@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CataloguePage } from "./CataloguePage";
 import {
@@ -80,7 +80,11 @@ beforeEach(() => {
   vi.mocked(bindCatalogueShortcut).mockResolvedValue({ success: true, message: "" });
   vi.mocked(startDownload).mockResolvedValue({ success: true, message: "" });
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 async function select() {
   render(<CataloguePage onBack={() => undefined} />);
@@ -98,6 +102,7 @@ it("searches, shows download metadata, and downloads the selected source", async
   expect(startDownload).toHaveBeenCalledWith(4503599627370496, false, null, null, false);
 });
 it("rolls back a new shortcut and does not download if binding fails", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
   vi.mocked(bindCatalogueShortcut).mockResolvedValue({ success: false, message: "Binding refused" });
   fireEvent.click(await select());
   await screen.findByText("Error: Binding refused");
@@ -133,10 +138,45 @@ it("limits the result list to five games", async () => {
   expect(screen.getAllByText(/Game \d – GB/)).toHaveLength(5);
 });
 it("surfaces search failure instead of retaining previous choices", async () => {
+  const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
   vi.mocked(searchCatalogue).mockResolvedValue({ success: false, items: [], message: "Source unavailable" });
   render(<CataloguePage onBack={() => undefined} />);
   fireEvent.change(screen.getByLabelText("Search games"), { target: { value: "Game" } });
   fireEvent.click(screen.getByText("Search EmuParadise"));
-  await screen.findByText("Source unavailable");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Source unavailable");
+  expect(screen.getByRole("alert")).toHaveStyle({ color: "#ff7070" });
   expect(getCatalogueDownloads).not.toHaveBeenCalled();
+  expect(logged).toHaveBeenCalledWith("Tender catalogue request failed", expect.any(Error));
+});
+
+it("times out an unanswered search, ignores its late reply, and allows retry", async () => {
+  vi.useFakeTimers();
+  const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  let finish!: (value: Awaited<ReturnType<typeof searchCatalogue>>) => void;
+  vi.mocked(searchCatalogue).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render(<CataloguePage onBack={() => undefined} />);
+  fireEvent.change(screen.getByLabelText("Search games"), { target: { value: "Game" } });
+  fireEvent.click(screen.getByText("Search EmuParadise"));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(30000);
+  });
+  expect(screen.getByRole("alert")).toHaveTextContent("Tender did not respond in time");
+  expect(screen.getByRole("alert")).toHaveStyle({ color: "#ff7070" });
+  expect(screen.getByText("Search EmuParadise")).not.toBeDisabled();
+  expect(screen.queryByText("Searching EmuParadise…")).toBeNull();
+  expect(logged).toHaveBeenCalledWith("Tender catalogue request failed", expect.any(Error));
+  await act(async () => {
+    finish({ success: true, items: [{ title: "Stale", platform: "GB_ROMs", page_url: "stale" }] });
+  });
+  expect(screen.queryByText("Stale – GB")).toBeNull();
+  await act(async () => {
+    fireEvent.click(screen.getByText("Search EmuParadise"));
+  });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByText("Homebrew – Nintendo Game Boy")).toBeInTheDocument();
 });

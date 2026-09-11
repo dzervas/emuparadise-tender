@@ -20,6 +20,29 @@ function platformLabel(section: string): string {
   return section.replace(/_(?:ROMs|ISOs)$/, "").replace(/_/g, " ");
 }
 
+// Decky can leave RPCs pending when the Python backend fails to start.
+async function catalogueResponse<T>(request: Promise<T>, timeoutMs = 30000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      request,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                "Tender did not respond in time. Its backend may have failed to start, or the source may be slow. Check Tender logs and the plugin_loader journal, then retry.",
+              ),
+            ),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
   const [installation, setInstallation] = useState("auto");
   const [query, setQuery] = useState("");
@@ -30,15 +53,22 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
   const [libraryRevision, setLibraryRevision] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const reportError = (cause: unknown) => {
+    console.error("Tender catalogue request failed", cause);
+    setMessage("");
+    setError(String(cause));
+  };
   useEffect(() => {
     void getEmulatorInstallation()
       .then((result) => setInstallation(result.selection))
-      .catch((error) => setMessage(String(error)));
+      .catch(reportError);
   }, []);
   const run = (action: () => Promise<void>) => {
     setBusy(true);
+    setError("");
     void action()
-      .catch((error) => setMessage(String(error)))
+      .catch(reportError)
       .finally(() => setBusy(false));
   };
   const search = () =>
@@ -48,15 +78,10 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
       setDownloads([]);
       setRomId(null);
       setMessage("Searching EmuParadise…");
-      const result = await searchCatalogue(query.trim());
-      setResults(result.success ? result.items.slice(0, 5) : []);
-      setMessage(
-        result.success
-          ? result.items.length
-            ? ""
-            : "No supported games found. Try a more specific title."
-          : result.message || "Search failed",
-      );
+      const result = await catalogueResponse(searchCatalogue(query.trim()));
+      if (!result.success) throw new Error(result.message || "Search failed");
+      setResults(result.items.slice(0, 5));
+      setMessage(result.items.length ? "" : "No supported games found. Try a more specific title.");
     });
   const choose = (item: CatalogueSearchItem) =>
     run(async () => {
@@ -64,18 +89,15 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
       setDownloads([]);
       setRomId(null);
       setMessage("Finding downloads…");
-      const result = await getCatalogueDownloads(item.page_url);
-      setDownloads(result.success ? result.items : []);
+      const result = await catalogueResponse(getCatalogueDownloads(item.page_url), 75000);
+      if (!result.success) throw new Error(result.message || "Download sources unavailable");
+      setDownloads(result.items);
       setMessage(
-        result.success
-          ? [
-              result.items.length
-                ? "Check the filename's region and version before downloading."
-                : "No matching public ZIP downloads found.",
-              ...(result.messages || []),
-            ].join(" ")
-          : result.message || "Download sources unavailable",
+        result.items.length
+          ? "Check the filename's region and version before downloading."
+          : "No matching public ZIP downloads found.",
       );
+      if (result.messages?.length) setError(result.messages.join(" "));
     });
   const download = (option: CatalogueDownloadOption) =>
     run(async () => {
@@ -106,10 +128,9 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
       setRomId(result.rom_id);
       setLibraryRevision((value) => value + 1);
       const queued = await startDownload(result.rom_id, false, null, null, false);
+      if (!queued.success) throw new Error(queued.message || "Download refused");
       setMessage(
-        queued.success
-          ? `Download queued. Progress is on Downloads.${result.shortcut_owner === "srm" ? " Update Steam library after it finishes." : ""}`
-          : queued.message || "Download refused",
+        `Download queued. Progress is on Downloads.${result.shortcut_owner === "srm" ? " Update Steam library after it finishes." : ""}`,
       );
     });
   return (
@@ -142,6 +163,7 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
             onClick={() =>
               run(async () => {
                 const result = await saveEmulatorInstallation(installation);
+                if (!result.success) throw new Error(result.message || "Installation could not be saved");
                 setMessage(result.message || "Installation saved");
               })
             }
@@ -164,6 +186,7 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
               setDownloads([]);
               setRomId(null);
               setMessage("");
+              setError("");
             }}
           />
         </PanelSectionRow>
@@ -176,6 +199,13 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
             Search EmuParadise
           </ButtonItem>
         </PanelSectionRow>
+        {error && (
+          <PanelSectionRow>
+            <div role="alert" style={{ color: "#ff7070", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+              {error}
+            </div>
+          </PanelSectionRow>
+        )}
         {results.map((item) => (
           <PanelSectionRow key={item.page_url}>
             <ButtonItem layout="below" disabled={busy} onClick={() => choose(item)}>
@@ -201,7 +231,8 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
               onClick={() =>
                 run(async () => {
                   const result = await removeRom(romId);
-                  setMessage(result.success ? "Installed ROM deleted." : result.message || "Deletion failed");
+                  if (!result.success) throw new Error(result.message || "Deletion failed");
+                  setMessage("Installed ROM deleted.");
                   setLibraryRevision((value) => value + 1);
                 })
               }
