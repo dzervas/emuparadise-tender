@@ -31,6 +31,7 @@ from domain.rom_files import (
 from lib.errors import error_response
 from lib.list_result import ErrorCode
 from lib.path_safety import PathTraversalError, coerce_safe_component, safe_join
+from services.archive_install import archive_cleanup_dirs, record_single_archive
 
 if TYPE_CHECKING:
     import logging
@@ -549,12 +550,9 @@ class DownloadService:
     def _post_download_multi_io(self, rom_id, rom_detail, target_path, file_name, system, extract_dir_name):
         """Sync helper for _do_download multi-file — extraction + renames in executor.
 
-        *extract_dir_name* is the ROM-identity-derived, sanitized base name for
-        the extract directory (``_resolve_safe_extract_dir_name``) — never a
-        name derived from ``files[0]``. Returns ``(launch_file, error)``.
-        ``error`` is a string when the RomM data fails the ``RomInstall``
-        invariant — the extracted directory is removed and nothing is
-        persisted — otherwise ``None``.
+        The sanitized identity names the staging directory. Public archives
+        containing one file publish directly into the shared platform directory.
+        Returns ``(launch_file, error)`` after recording file or directory ownership.
         """
         extract_dir = os.path.join(os.path.dirname(target_path), extract_dir_name)
         self._download_file_store.make_dirs(extract_dir)
@@ -568,6 +566,11 @@ class DownloadService:
         self._download_file_store.extract_zip(tmp_zip, extract_dir, roms_base, progress_callback=extract_cb)
         self._download_file_store.remove_file(tmp_zip)
         self._download_file_store.decode_url_encoded_names(extract_dir)
+        single = record_single_archive(
+            self._download_file_store, self._install_recorder, extract_dir, rom_id, rom_detail, system
+        )
+        if single is not None:
+            return single
         # Heal a folder-boot disc dump whose PS3_DISC.SFB ships .txt-suffixed,
         # before launch detection reads the layout (ADR-0019 / #1212).
         self._maybe_heal_ps3_sfb_io(extract_dir)
@@ -1206,11 +1209,7 @@ class DownloadService:
         """
         self._remove_partial_tmp_files(target_path)
         if has_multiple:
-            staging_dir = os.path.join(os.path.dirname(target_path), extract_dir_name)
-            dirs_to_remove = {staging_dir}
-            if final_path:
-                dirs_to_remove.add(os.path.dirname(final_path))
-            for extract_dir in dirs_to_remove:
+            for extract_dir in archive_cleanup_dirs(target_path, extract_dir_name, final_path):
                 try:
                     self._download_file_store.remove_tree(extract_dir)
                 except Exception as e:

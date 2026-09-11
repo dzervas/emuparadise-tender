@@ -83,6 +83,8 @@ async def test_public_import_download_and_delete_preserves_other_files(harness, 
     assert installed, plugin._download_service.get_download_queue()
     assert os.path.commonpath([installed["file_path"], os.path.join(root, system)]) == os.path.join(root, system)
     assert os.path.isfile(installed["file_path"])
+    assert os.path.dirname(installed["file_path"]) == os.path.join(root, system)
+    assert installed.get("rom_dir") is None
     listed = await plugin.list_catalogue_entries()
     assert any(item["rom_id"] == rom_id and item["installed"] for item in listed["items"])
     alternate = replace(

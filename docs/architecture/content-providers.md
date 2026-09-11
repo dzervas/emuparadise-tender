@@ -302,3 +302,11 @@ published pagination within the existing six-page search budget and resolve ever
 matching variant found, rather than stopping at the first page or first two matches.
 Expose region labels from the provider's published filename, never from the selected
 EmuParadise entry; keep unknown regions explicit and the full filename visible.
+
+### Single-file archive placement
+
+Public catalogue archives with exactly one file are extracted privately, then published
+directly in the platform ROM directory without replacing existing paths. Their install
+record owns only that file. Multi-file archives retain dedicated directory ownership;
+RomM placement and existing installations are unchanged. Failure cleanup must never
+interpret a flat file’s parent (the shared platform directory) as an owned directory.

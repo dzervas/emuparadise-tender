@@ -167,3 +167,8 @@ Choose among the providers' available regions explicitly; options label the regi
 from the published download filename, or show Unknown region. A selected catalogue
 region does not filter out other source regions. Search follows up to six published
 result pages and includes every matching variant found within that search budget.
+
+New catalogue downloads containing a single file install directly at
+`roms/<platform>/<game file>`, including archives with an internal wrapper folder.
+An existing destination is never overwritten. Multi-file games retain their game
+folder. Existing installations are not moved; their recorded deletion paths remain valid.

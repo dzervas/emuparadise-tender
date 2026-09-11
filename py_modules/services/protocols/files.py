@@ -234,6 +234,10 @@ class DownloadFileStore(Protocol):
         """Atomically rename *src* to *dst*, replacing any existing file at *dst*."""
         ...
 
+    def publish_file(self, src: str, dst: str) -> None:
+        """Publish a same-filesystem file without replacing any destination; retain source."""
+        ...
+
     def move_dir(self, src: str, dst: str) -> None:
         """Atomically move the whole directory *src* to *dst*.
 
