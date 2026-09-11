@@ -90,3 +90,27 @@ def test_retrodeck_keeps_original_paths_and_commands(monkeypatch, tmp_path):
     catalogue = Mock()
     wrapper = InstallationCatalogueAdapter(catalogue=catalogue, installation=adapter)
     assert wrapper.get_default_emulator("gb") is catalogue.get_default_emulator.return_value
+
+
+def test_adapter_imports_without_deckys_missing_etree():
+    """A fresh process must not rely on pytest's already imported stdlib modules."""
+    import os
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import sys
+sys.modules["xml.etree"] = None
+from adapters.emulator_installation import EmulatorInstallationAdapter
+""",
+        ],
+        env={**os.environ, "PYTHONPATH": "py_modules"},
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr

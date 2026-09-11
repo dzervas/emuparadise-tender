@@ -5,11 +5,11 @@ from __future__ import annotations
 import os
 import re
 import shlex
-import xml.etree.ElementTree as ET
 from dataclasses import replace
 from typing import Any, cast
 
 from _vendor.atlas import EmuDeck, detect
+from _vendor.atlas._xml import ParseError, fromstring
 
 from domain.emulator_commands import option_to_invocation, select_default_option
 from domain.shortcut_data import EmulatorInvocation
@@ -92,7 +92,9 @@ class EmulatorInstallationAdapter:
 
     def host_command(self, command: str) -> str:
         rules_path = os.path.join(self._home, "ES-DE", "custom_systems", "es_find_rules.xml")
-        tree = ET.parse(rules_path)
+        # Decky does not bundle xml.etree; reuse atlas's expat-backed parser.
+        with open(rules_path, encoding="utf-8") as rules_file:
+            tree = fromstring(rules_file.read())
         args = shlex.split(command)
         if not args or args[-1] != "%ROM%" or args.count("%ROM%") != 1:
             raise ValueError("This EmuDeck command requires ES-DE launch preparation")
@@ -105,7 +107,14 @@ class EmulatorInstallationAdapter:
                     kind, name, rule = "core", "RETROARCH", "corepath"
                 else:
                     raise ValueError("Unsupported ES-DE launch placeholder")
-                candidates = tree.findall(f"./{kind}[@name='{name}']/rule[@type='{rule}']/entry")
+                candidates = [
+                    entry
+                    for group in tree.findall(kind)
+                    if group.get("name") == name
+                    for rule_node in group.findall("rule")
+                    if rule_node.get("type") == rule
+                    for entry in rule_node.findall("entry")
+                ]
                 paths = [((entry.text or "").strip().replace("~/", self._home + "/", 1)) for entry in candidates]
                 path = next(
                     (
@@ -148,7 +157,7 @@ class InstallationCatalogueAdapter:
             try:
                 command = self._installation.host_command(option.command)
                 options.append(replace(option, status="bakeable", reason=None, host_command=command))
-            except (ValueError, OSError, ET.ParseError):
+            except (ValueError, OSError, ParseError):
                 options.append(replace(option, status="needs_setup", reason="not_installed"))
         return {**result, "options": options}
 
