@@ -134,3 +134,10 @@ Tender's backend. Over SSH, `sudo systemctl restart plugin_loader` reloads Decky
 and all its plugins. After reconnecting, check the loaded installation choice.
 Installation loads and saves are logged at INFO; failed disk writes keep tracebacks.
 An unconfirmed save instructs you to reload and verify the stored choice before retrying.
+
+
+Public catalogue HTTPS and ZIP downloads use the system CA certificates with
+certificate and hostname verification enabled. Tender logs the selected bundle
+(e.g. `/etc/ssl/certs/ca-certificates.crt` on SteamOS) at startup. Missing OpenSSL
+build-time paths do not prevent loading the OS bundle. If verification still fails,
+the full error remains in the logs; no insecure retry is attempted.

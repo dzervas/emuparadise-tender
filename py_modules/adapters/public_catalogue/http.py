@@ -3,12 +3,38 @@
 from __future__ import annotations
 
 import http.cookiejar
+import logging
+import os
+import ssl
 import urllib.parse
 import urllib.request
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+
+_SYSTEM_CA_BUNDLES = (
+    "/etc/ssl/certs/ca-certificates.crt",
+    "/etc/ca-certificates/extracted/tls-ca-bundle.pem",
+    "/etc/ssl/cert.pem",
+    "/etc/pki/tls/certs/ca-bundle.crt",
+    "/etc/ssl/ca-bundle.pem",
+)
+_logger = logging.getLogger(__name__)
+
+
+def _system_ssl_context() -> ssl.SSLContext:
+    """Verify against OS roots even when frozen OpenSSL defaults point elsewhere."""
+    context = ssl.create_default_context()
+    for bundle in _SYSTEM_CA_BUNDLES:
+        if os.path.isfile(bundle):
+            context.load_verify_locations(cafile=bundle)
+            _logger.info("Public catalogue HTTPS uses system CA bundle: %s", bundle)
+            break
+    else:
+        _logger.info("Public catalogue HTTPS uses OpenSSL default CA paths: %s", ssl.get_default_verify_paths())
+    return context
 
 
 class PublicSourceError(ValueError):
@@ -54,7 +80,9 @@ class PublicHttpAdapter:
         self._hosts = hosts
         self._user_agent = user_agent
         self._opener = urllib.request.build_opener(
-            _SourceRedirects(hosts), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+            _SourceRedirects(hosts),
+            urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()),
+            urllib.request.HTTPSHandler(context=_system_ssl_context()),
         )
 
     def read_html(self, url: str, *, fields: dict[str, str] | None = None) -> str:

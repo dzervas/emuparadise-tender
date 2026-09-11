@@ -241,3 +241,15 @@ confirmed that `html.parser`, `_markupbase`, and `xml.etree` are absent;
 The regression test blocks all three absent modules while importing the complete
 bootstrap and parsing entities, nested links, download forms and inert scripts.
 This checks the known runtime gap without claiming a Steam Deck device test.
+
+
+## Public-source TLS trust
+
+The public-source opener must explicitly load the host's CA bundle: Decky's frozen
+OpenSSL can use build-time default paths that do not resolve on SteamOS. Create a
+verified default SSL context, then load the first existing OS trust bundle from
+SteamOS/Arch and other common Linux locations. Pass that context to the opener's
+HTTPS handler so both catalogue pages and ZIP transfers use the same trust policy.
+Keep default trust paths when no known bundle exists. Never disable hostname or
+certificate verification, download roots, or inherit RomM's insecure-SSL setting.
+Log the selected system bundle to make device diagnosis possible.
