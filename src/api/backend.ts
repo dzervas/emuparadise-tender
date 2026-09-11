@@ -1262,8 +1262,13 @@ export const inspectCatalogueEntry = callable<[string, string, string], Catalogu
 export const importCatalogueEntry = callable<[string, string, string], CatalogueImport>("import_catalogue_entry");
 export const bindCatalogueShortcut = callable<[number, number], BackendResult>("bind_catalogue_shortcut");
 
-export const getEmulatorInstallation = callable<[], { selection: string }>("get_emulator_installation");
-export const saveEmulatorInstallation = callable<[string], BackendResult>("save_emulator_installation");
+export const getEmulatorInstallation = callable<
+  [],
+  { selection: string; active_selection?: string; restart_required?: boolean; message?: string }
+>("get_emulator_installation");
+export const saveEmulatorInstallation = callable<[string], BackendResult & { restart_required?: boolean }>(
+  "save_emulator_installation",
+);
 
 export interface SrmStatus {
   enabled: boolean;

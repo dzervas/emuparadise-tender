@@ -125,3 +125,12 @@ On a standard Steam Deck install, timestamped Tender logs are in
 sudo journalctl -u plugin_loader -b -n 150 --no-pager
 sudo journalctl -u plugin_loader -f
 ```
+
+
+The installation section shows the choice loaded by the backend, and save progress
+or errors directly below Save. A successful change confirms the saved choice and
+whether Decky must restart. Restarting only Steam does not necessarily reload
+Tender's backend. Over SSH, `sudo systemctl restart plugin_loader` reloads Decky
+and all its plugins. After reconnecting, check the loaded installation choice.
+Installation loads and saves are logged at INFO; failed disk writes keep tracebacks.
+An unconfirmed save instructs you to reload and verify the stored choice before retrying.

@@ -65,6 +65,11 @@ class SettingsService:
         self._active_installation_selection = config.settings.get("emulator_installation", "auto")
         self._available_installations = config.available_installations
         self._prepare_installation_change = config.prepare_installation_change
+        self._logger.info(
+            "Emulator installation loaded: selection=%s; detected=%s",
+            self._active_installation_selection,
+            self._available_installations,
+        )
 
     # ── Server connection settings ───────────────────────────────────────
 
@@ -319,9 +324,13 @@ class SettingsService:
         return {
             "selection": self._settings.get("emulator_installation", "auto"),
             "available": self._available_installations,
+            "active_selection": self._active_installation_selection,
+            "restart_required": self._settings.get("emulator_installation", "auto")
+            != self._active_installation_selection,
         }
 
     def save_emulator_installation(self, selection: str) -> dict[str, Any]:
+        self._logger.info("Emulator installation save requested: %s", selection)
         if selection not in ("auto", "retrodeck", "emudeck"):
             return {"success": False, "reason": "invalid_selection", "message": "Choose Auto, RetroDECK or EmuDeck"}
         if selection not in self._available_installations:
@@ -348,7 +357,14 @@ class SettingsService:
             self._settings_persister.save_settings()
         except Exception as exc:
             self._settings["emulator_installation"] = previous
+            self._logger.exception("Failed to persist emulator installation choice")
             return {"success": False, "reason": "save_failed", "message": str(exc)}
+        self._logger.info(
+            "Emulator installation saved: %s; loaded choice=%s; restart_required=%s",
+            selection,
+            self._active_installation_selection,
+            selection != self._active_installation_selection,
+        )
         return {
             "success": True,
             "message": "Restart Decky to use the selected installation",

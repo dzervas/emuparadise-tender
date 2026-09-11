@@ -1,5 +1,6 @@
 """Public catalogue imports use the real SQLite/install/delete pipeline."""
 
+import json
 import os
 import zipfile
 from dataclasses import replace
@@ -89,6 +90,12 @@ async def test_installation_change_requires_restart_before_new_downloads(harness
     changed = await plugin.save_emulator_installation("emudeck")
     assert changed["success"], changed
     assert changed["restart_required"]
+    with open(os.path.join(harness.settings_dir, "settings.json")) as saved_file:
+        assert json.load(saved_file)["emulator_installation"] == "emudeck"
+    state = await plugin.get_emulator_installation()
+    assert state["selection"] == "emudeck"
+    assert state["active_selection"] == "auto"
+    assert state["restart_required"]
     blocked = await plugin.start_download(42)
     assert blocked["reason"] == "restart_required"
     blocked_import = await plugin.import_catalogue_entry("unused", "romspedia", "unused")

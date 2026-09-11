@@ -618,3 +618,37 @@ class TestDismissSettingsResetNotice:
         assert result == {"success": True}
         assert "_settings_reset_notice" not in settings
         settings_persister.save_settings.assert_called_once_with()
+
+
+def test_installation_save_and_reload_reports_restart_and_logs(
+    settings, uow, logger, settings_persister, steam_config, caplog
+):
+    config = SettingsServiceConfig(
+        settings=settings,
+        uow_factory=FakeUnitOfWorkFactory(uow=uow),
+        logger=logger,
+        settings_persister=settings_persister,
+        steam_config=steam_config,
+        available_installations=("auto", "emudeck"),
+    )
+    with caplog.at_level(logging.INFO):
+        service = SettingsService(config=config)
+        assert service.save_emulator_installation("emudeck")["restart_required"]
+        settings_persister.save_settings.assert_called_once_with()
+        assert service.get_emulator_installation()["active_selection"] == "auto"
+        assert service.get_emulator_installation()["selection"] == "emudeck"
+        reloaded = SettingsService(config=config)
+        assert reloaded.get_emulator_installation()["active_selection"] == "emudeck"
+        assert not reloaded.get_emulator_installation()["restart_required"]
+    assert "Emulator installation saved: emudeck" in caplog.text
+    assert "Emulator installation loaded: selection=emudeck" in caplog.text
+
+
+def test_installation_write_failure_keeps_old_choice_and_traceback(service, settings, settings_persister, caplog):
+    service._available_installations = ("auto", "emudeck")
+    settings_persister.save_settings.side_effect = OSError("Disk full")
+    result = service.save_emulator_installation("emudeck")
+    assert not result["success"]
+    assert settings["emulator_installation"] == "auto"
+    assert "Traceback (most recent call last)" in caplog.text
+    assert "OSError: Disk full" in caplog.text

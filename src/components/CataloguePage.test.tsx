@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CataloguePage } from "./CataloguePage";
 import {
+  getEmulatorInstallation,
+  saveEmulatorInstallation,
   bindCatalogueShortcut,
   importCatalogueEntry,
   searchCatalogue,
@@ -27,7 +29,25 @@ vi.mock("@decky/ui", () => ({
     </button>
   ),
   TextField: ({ label, ...props }: { label: string }) => <input aria-label={label} {...props} />,
-  DropdownItem: () => <div />,
+  DropdownItem: ({
+    selectedOption,
+    onChange,
+    disabled,
+  }: {
+    selectedOption: string;
+    onChange: (option: { data: string }) => void;
+    disabled?: boolean;
+  }) => (
+    <select
+      aria-label="Installation"
+      value={selectedOption}
+      disabled={disabled}
+      onChange={(event) => onChange({ data: event.target.value })}
+    >
+      <option value="auto">Auto</option>
+      <option value="emudeck">EmuDeck</option>
+    </select>
+  ),
 }));
 vi.mock("../api/backend", () => ({
   searchCatalogue: vi.fn(),
@@ -46,6 +66,12 @@ vi.mock("../patches/gameDetailPatch", () => ({ registerRomMAppId: vi.fn() }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getEmulatorInstallation).mockResolvedValue({
+    selection: "auto",
+    active_selection: "auto",
+    restart_required: false,
+  });
+  vi.mocked(saveEmulatorInstallation).mockResolvedValue({ success: true, message: "Saved", restart_required: true });
   vi.stubGlobal("SteamClient", { Apps: { RemoveShortcut: vi.fn(), SetCustomArtworkForApp: vi.fn() } });
   vi.mocked(searchCatalogue).mockResolvedValue({
     success: true,
@@ -179,4 +205,52 @@ it("times out an unanswered search, ignores its late reply, and allows retry", a
   });
   expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.getByText("Homebrew – Nintendo Game Boy")).toBeInTheDocument();
+});
+
+it("confirms a saved installation beside Save and shows the loaded choice after restart", async () => {
+  const view = render(<CataloguePage onBack={() => undefined} />);
+  await screen.findByText("Loaded installation choice: auto.");
+  fireEvent.change(screen.getByLabelText("Installation"), { target: { value: "emudeck" } });
+  fireEvent.click(screen.getByText("Save installation choice"));
+  await screen.findByText("Saved choice: emudeck. Restart Decky to apply it.");
+  expect(saveEmulatorInstallation).toHaveBeenCalledWith("emudeck");
+  view.unmount();
+  vi.mocked(getEmulatorInstallation).mockResolvedValue({
+    selection: "emudeck",
+    active_selection: "emudeck",
+    restart_required: false,
+  });
+  render(<CataloguePage onBack={() => undefined} />);
+  await screen.findByText("Loaded installation choice: emudeck.");
+  expect(screen.getByLabelText("Installation")).toHaveValue("emudeck");
+});
+
+it("shows a refused installation save in red without claiming it was saved", async () => {
+  const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  vi.mocked(saveEmulatorInstallation).mockResolvedValue({
+    success: false,
+    message: "That emulator installation was not detected",
+  });
+  render(<CataloguePage onBack={() => undefined} />);
+  await screen.findByText("Loaded installation choice: auto.");
+  fireEvent.click(screen.getByText("Save installation choice"));
+  expect(await screen.findByRole("alert")).toHaveTextContent("not detected");
+  expect(screen.getByRole("alert")).toHaveStyle({ color: "#ff7070" });
+  expect(logged).toHaveBeenCalledWith("Tender installation save failed", expect.any(Error));
+});
+
+it("reports an unconfirmed save instead of waiting forever or claiming success", async () => {
+  vi.useFakeTimers();
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  vi.mocked(saveEmulatorInstallation).mockImplementationOnce(() => new Promise(() => undefined));
+  await act(async () => {
+    render(<CataloguePage onBack={() => undefined} />);
+  });
+  fireEvent.click(screen.getByText("Save installation choice"));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(30000);
+  });
+  expect(screen.getByRole("alert")).toHaveTextContent("Save was not confirmed");
+  expect(screen.getByText("Save installation choice")).not.toBeDisabled();
+  expect(saveEmulatorInstallation).toHaveBeenCalledTimes(1);
 });

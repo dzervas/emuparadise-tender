@@ -21,21 +21,17 @@ function platformLabel(section: string): string {
 }
 
 // Decky can leave RPCs pending when the Python backend fails to start.
-async function catalogueResponse<T>(request: Promise<T>, timeoutMs = 30000): Promise<T> {
+async function catalogueResponse<T>(
+  request: Promise<T>,
+  timeoutMs = 30000,
+  timeoutMessage = "Tender did not respond in time. Its backend may have failed to start, or the source may be slow. Check Tender logs and the plugin_loader journal, then retry.",
+): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       request,
       new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () =>
-            reject(
-              new Error(
-                "Tender did not respond in time. Its backend may have failed to start, or the source may be slow. Check Tender logs and the plugin_loader journal, then retry.",
-              ),
-            ),
-          timeoutMs,
-        );
+        timer = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
       }),
     ]);
   } finally {
@@ -45,6 +41,11 @@ async function catalogueResponse<T>(request: Promise<T>, timeoutMs = 30000): Pro
 
 export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
   const [installation, setInstallation] = useState("auto");
+  const [installationLoaded, setInstallationLoaded] = useState(false);
+  const [installationNotice, setInstallationNotice] = useState({
+    message: "Loading saved installation…",
+    error: false,
+  });
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CatalogueSearchItem[]>([]);
   const [selected, setSelected] = useState<CatalogueSearchItem | null>(null);
@@ -60,17 +61,58 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
     setError(String(cause));
   };
   useEffect(() => {
-    void getEmulatorInstallation()
-      .then((result) => setInstallation(result.selection))
-      .catch(reportError);
+    let mounted = true;
+    void catalogueResponse(getEmulatorInstallation())
+      .then((result) => {
+        if (!mounted) return;
+        if (!result.selection)
+          throw new Error(result.message || "Tender could not load the saved installation choice.");
+        setInstallation(result.selection);
+        setInstallationLoaded(true);
+        setInstallationNotice({
+          message: result.restart_required
+            ? `Saved choice: ${result.selection}. Restart Decky to apply it (loaded: ${result.active_selection}).`
+            : `Loaded installation choice: ${result.active_selection || result.selection}.`,
+          error: false,
+        });
+      })
+      .catch((cause: unknown) => {
+        console.error("Tender installation settings failed to load", cause);
+        if (mounted) setInstallationNotice({ message: String(cause), error: true });
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
-  const run = (action: () => Promise<void>) => {
+  const run = (action: () => Promise<void>, onError = reportError) => {
     setBusy(true);
     setError("");
     void action()
-      .catch(reportError)
+      .catch(onError)
       .finally(() => setBusy(false));
   };
+  const saveInstallation = () =>
+    run(
+      async () => {
+        setInstallationNotice({ message: "Saving installation choice…", error: false });
+        const result = await catalogueResponse(
+          saveEmulatorInstallation(installation),
+          30000,
+          "Save was not confirmed. Reload Tender and check the saved choice before retrying. Check the plugin_loader journal if Tender does not respond.",
+        );
+        if (!result.success) throw new Error(result.message || "Installation could not be saved");
+        setInstallationNotice({
+          message: result.restart_required
+            ? `Saved choice: ${installation}. Restart Decky to apply it.`
+            : `Saved choice: ${installation}. No restart needed.`,
+          error: false,
+        });
+      },
+      (cause: unknown) => {
+        console.error("Tender installation save failed", cause);
+        setInstallationNotice({ message: String(cause), error: true });
+      },
+    );
   const search = () =>
     run(async () => {
       setResults([]);
@@ -147,29 +189,30 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
           <DropdownItem
             label="Installation"
             selectedOption={installation}
-            disabled={busy}
+            disabled={busy || !installationLoaded}
             rgOptions={[
               { label: "Auto (RetroDECK first)", data: "auto" },
               { label: "RetroDECK", data: "retrodeck" },
               { label: "EmuDeck", data: "emudeck" },
             ]}
-            onChange={(option) => setInstallation(option.data)}
+            onChange={(option) => {
+              setInstallation(option.data);
+              setInstallationNotice({ message: "Choice changed. Save to apply after restarting Decky.", error: false });
+            }}
           />
         </PanelSectionRow>
         <PanelSectionRow>
-          <ButtonItem
-            layout="below"
-            disabled={busy}
-            onClick={() =>
-              run(async () => {
-                const result = await saveEmulatorInstallation(installation);
-                if (!result.success) throw new Error(result.message || "Installation could not be saved");
-                setMessage(result.message || "Installation saved");
-              })
-            }
-          >
-            Save installation choice (restart required)
+          <ButtonItem layout="below" disabled={busy || !installationLoaded} onClick={saveInstallation}>
+            Save installation choice
           </ButtonItem>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <div
+            role={installationNotice.error ? "alert" : "status"}
+            style={{ color: installationNotice.error ? "#ff7070" : undefined, overflowWrap: "anywhere" }}
+          >
+            {installationNotice.message}
+          </div>
         </PanelSectionRow>
       </PanelSection>
       <EmudeckLibrary revision={libraryRevision} />
