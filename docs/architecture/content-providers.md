@@ -155,9 +155,9 @@ a successful Rollup build is not evidence those device behaviors were tested.
   a separately selected source page into an immutable `DownloadPlan`.
 - `RomDetailReader` and `RomDownloadReader` are independently injected into the
   existing download engine. `RommRomReader` composes them for compatibility.
-- Public source bindings are pinned at first import. Re-importing the same entry
-  is idempotent; asking to rebind it to a different download page is explicitly
-  refused. Source rebinding is not implemented in this version.
+- Public entries retain their local ID across source changes. An uninstalled entry
+  can select another provider/page; active downloads and installed copies prevent
+  rebinding until cancelled/completed or deleted respectively.
 - Public transfers support ZIP files, reject HTML and executable responses before
   opening the destination, detect incomplete transfers, and disable unverified
   range resume. Existing extraction and path-ownership checks still apply.
@@ -275,3 +275,19 @@ provider bypasses or changes to SSL verification are required.
 The 7z adapter binds the upstream [libarchive read API](https://github.com/libarchive/libarchive/blob/master/libarchive/archive.h)
 and [entry API](https://github.com/libarchive/libarchive/blob/master/libarchive/archive_entry.h).
 The system library name is listed in the [Arch libarchive package](https://archlinux.org/packages/core/x86_64/libarchive/files/).
+
+
+## Download retries and library visibility
+
+Some public file servers omit Content-Type for valid 7z files; urllib reports
+`text/plain` for a missing header. Require a successful response and a supported
+archive signature instead of rejecting an absent or generic MIME type. HTML or
+other non-archive bytes still fail before the destination is opened.
+
+Keep the catalogue's stable local ID, but permit replacing its download source
+while uninstalled. Reject changes while a download is queued, paused or active,
+while another guarded mutation is in flight, or while installed bytes remain.
+Update the ROM filename and metadata when rebinding; never rewrite installed-file
+ownership. Failed/uninstalled public entries stay available for identity reuse but
+are omitted from the EmuDeck library list. RomM's explicit import-to-download flow
+keeps its uninstalled entries visible.

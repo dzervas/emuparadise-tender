@@ -100,6 +100,10 @@ class Rom:
             fs_size_bytes=fs_size_bytes,
         )
 
+    def select_download_file(self, filename: str) -> None:
+        """Use a newly selected source filename before installation."""
+        self.fs_name = filename
+
     def record_fetch_generation(self, fetch_id: str) -> None:
         """Record that the fetch generation *fetch_id* returned this ROM.
 

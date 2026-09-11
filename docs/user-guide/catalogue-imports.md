@@ -29,7 +29,7 @@ resume behavior. Only use content you have permission to download.
 It preserves other games, saves, BIOS files and the Steam shortcut. Removing the
 shortcut is a separate operation. A failed download never becomes an installed ROM.
 Re-importing the same catalogue entry preserves its identity and shortcut binding.
-Its first download-source binding remains pinned; source switching is not yet exposed.
+An uninstalled game can switch download sources; its active download must finish or be cancelled first.
 
 ## Emulator paths
 
@@ -153,3 +153,10 @@ a download provider offers a European release.
 ZIP and 7z downloads use the same installed-ROM tracking and deletion workflow.
 7z extraction uses the host's `libarchive.so.13`; extraction rejects links, traversal,
 special files and overwrites. It does not install tools or run archive contents.
+
+
+After a failed download, select another provider's option for the same catalogue
+game. Tender keeps its local identity and updates the source and filename. Finish
+or cancel that game's active/paused download first; delete an installed copy before
+switching sources. Failed or uninstalled public entries are hidden from the EmuDeck
+library list; search again to retry. Installation records and save files are preserved.

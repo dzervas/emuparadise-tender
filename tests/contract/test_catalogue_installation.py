@@ -66,6 +66,7 @@ async def test_public_import_download_and_delete_preserves_other_files(harness, 
     assert imported["success"], imported
     rom_id = imported["rom_id"]
     assert rom_id >= PUBLIC_ID_START
+    assert not (await plugin.list_catalogue_entries())["items"]
     assert (await plugin.bind_catalogue_shortcut(rom_id, 123456789))["success"] is not srm_owned
     again = await plugin.import_catalogue_entry(entry.page_url, "romspedia", plan.page_url)
     assert again["rom_id"] == rom_id
@@ -84,12 +85,30 @@ async def test_public_import_download_and_delete_preserves_other_files(harness, 
     assert os.path.isfile(installed["file_path"])
     listed = await plugin.list_catalogue_entries()
     assert any(item["rom_id"] == rom_id and item["installed"] for item in listed["items"])
+    alternate = replace(
+        plan,
+        provider="romsdl",
+        page_url=f"https://romsdl.com/roms/{download_section}/alternate",
+        filename=f"Alternate.{archive}",
+    )
+    catalogue._config.resolvers["romsdl"] = Mock(resolve=Mock(return_value=alternate))
+    blocked = await plugin.import_catalogue_entry(entry.page_url, "romsdl", alternate.page_url)
+    assert not blocked["success"]
+    assert "Delete the installed ROM" in blocked["message"]
     removed = await plugin.remove_rom(rom_id)
     assert removed["success"], removed
     assert not os.path.exists(installed["file_path"])
     with open(other, "rb") as file:
         assert file.read() == b"untouched"
     assert plugin._download_service.get_installed_rom(rom_id) is None
+    assert not (await plugin.list_catalogue_entries())["items"]
+    rebound = await plugin.import_catalogue_entry(entry.page_url, "romsdl", alternate.page_url)
+    assert rebound["success"], rebound
+    assert rebound["rom_id"] == rom_id
+    assert catalogue._config.sources.get(rom_id)["download_provider"] == "romsdl"
+    with catalogue._config.uow_factory() as uow:
+        assert uow.roms.get(rom_id).fs_name == alternate.filename
+
     with catalogue._config.uow_factory() as uow:
         assert uow.roms.get(rom_id).shortcut_app_id == (None if srm_owned else 123456789)
 
@@ -148,3 +167,61 @@ async def test_catalogue_download_search_preserves_other_provider_results(harnes
     assert record.exc_info[2] is not None
     assert "Traceback (most recent call last)" in caplog.text
     assert "ValueError: Source unavailable" in caplog.text
+
+
+async def test_failed_source_can_be_changed_without_duplicating_library_entry(harness):
+    plugin = harness.plugin
+    catalogue = plugin._catalogue_service
+    entry = CatalogueEntry("emuparadise", "99", "https://catalogue/game/99", "Homebrew", "Nintendo_Game_Boy_ROMs")
+    first = DownloadPlan(
+        "romspedia", "https://www.romspedia.com/roms/gameboy/first", "https://source/first.zip", "First.zip"
+    )
+    second = replace(first, provider="romsdl", page_url="https://romsdl.com/roms/gameboy/second", filename="Second.zip")
+    catalogue._config = replace(
+        catalogue._config,
+        catalogue=Mock(get_entry=Mock(return_value=entry)),
+        resolvers={
+            "romspedia": Mock(resolve=Mock(return_value=first)),
+            "romsdl": Mock(resolve=Mock(return_value=second)),
+        },
+    )
+    initial = await plugin.import_catalogue_entry(entry.page_url, first.provider, first.page_url)
+    assert initial["success"], initial
+    rom_id = initial["rom_id"]
+    plugin._download_service._download_queue[rom_id] = {"rom_id": rom_id, "status": "paused"}
+    refused = await plugin.import_catalogue_entry(entry.page_url, second.provider, second.page_url)
+    assert refused["reason"] == "downloads_active"
+    plugin._download_service._download_queue[rom_id]["status"] = "failed"
+    # Another game's queued download must not pin this failed game's provider.
+    plugin._download_service._download_queue[42] = {"rom_id": 42, "status": "queued"}
+    rebound = await plugin.import_catalogue_entry(entry.page_url, second.provider, second.page_url)
+    assert rebound["success"], rebound
+    assert rebound["rom_id"] == rom_id
+    source = catalogue._config.sources.get(rom_id)
+    assert source["download_provider"] == "romsdl"
+    assert source["detail"]["fs_name"] == "Second.zip"
+    assert not (await plugin.list_catalogue_entries())["items"]
+
+
+async def test_source_selection_blocks_concurrent_download_admission(harness):
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    plugin = harness.plugin
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def select(*args):
+        entered.set()
+        await release.wait()
+        return {"success": True}
+
+    plugin._catalogue_service.import_entry = AsyncMock(side_effect=select)
+    task = asyncio.create_task(plugin.import_catalogue_entry("https://catalogue/game/99", "romsdl", "unused"))
+    await asyncio.wait_for(entered.wait(), 2)
+    try:
+        blocked = await plugin.start_download(42)
+        assert blocked["reason"] == "source_change_active"
+    finally:
+        release.set()
+        await task
+    assert not plugin._catalogue_import_in_progress

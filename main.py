@@ -36,6 +36,7 @@ from lib.sync_gate import sync_active_blocked
 
 class Plugin:
     _installation_restart_required: bool = False
+    _srm_mutations: int = 0
     settings: dict[str, Any]
     loop: asyncio.AbstractEventLoop
 
@@ -1098,7 +1099,26 @@ class Plugin:
     @installation_restart_blocked
     @srm_update_blocked
     async def import_catalogue_entry(self, catalogue_url: str, provider: str, download_url: str) -> dict[str, Any]:
-        return await self._catalogue_service.import_entry(catalogue_url, provider, download_url)
+        rom_id = await self._catalogue_service.bound_rom_id(catalogue_url)
+        queue = self._download_service.get_download_queue()["downloads"]
+        if (
+            self._srm_mutations > 1
+            or rom_id in self._download_service.active_download_rom_ids()
+            or any(
+                item["rom_id"] == rom_id and item["status"] not in ("completed", "failed", "cancelled")
+                for item in queue
+            )
+        ):
+            return {
+                "success": False,
+                "reason": "downloads_active",
+                "message": "Finish or cancel this game's download before changing its source",
+            }
+        self._catalogue_import_in_progress = True
+        try:
+            return await self._catalogue_service.import_entry(catalogue_url, provider, download_url)
+        finally:
+            self._catalogue_import_in_progress = False
 
     @migration_blocked
     @prune_active_blocked

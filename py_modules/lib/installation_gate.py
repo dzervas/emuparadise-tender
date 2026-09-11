@@ -33,6 +33,13 @@ def srm_update_blocked(method):
             )
         ):
             return {"success": False, "reason": "srm_busy", "message": "Wait for the Steam library update to finish"}
+        # This counter also serializes source rebinding against download admission.
+        if getattr(self, "_catalogue_import_in_progress", False):
+            return {
+                "success": False,
+                "reason": "source_change_active",
+                "message": "Wait for download source selection to finish",
+            }
         self._srm_mutations = getattr(self, "_srm_mutations", 0) + 1
         try:
             return await method(self, *args, **kwargs)

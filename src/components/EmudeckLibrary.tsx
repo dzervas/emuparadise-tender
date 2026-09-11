@@ -14,16 +14,20 @@ import { readRunningApps } from "../utils/runningApps";
 export const EmudeckLibrary: FC<{ revision: number }> = ({ revision }) => {
   const [status, setStatus] = useState<SrmStatus | null>(null);
   const [items, setItems] = useState<CatalogueItem[]>([]);
-  const [selected, setSelected] = useState<CatalogueItem | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const selected = items.find((item) => item.rom_id === selectedId) || null;
   const [rommId, setRommId] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [message, setMessage] = useState("");
-  const refresh = useCallback(async () => {
-    const next = await getSrmStatus();
-    setStatus(next);
-    if (next.enabled) setItems((await listCatalogueEntries()).items);
-  }, []);
+  const refresh = useCallback(
+    () =>
+      getSrmStatus().then(async (next) => {
+        setStatus(next);
+        if (next.enabled) setItems((await listCatalogueEntries()).items);
+      }),
+    [],
+  );
   useEffect(() => {
     void refresh().catch((error) => setMessage(String(error)));
   }, [refresh, revision]);
@@ -73,7 +77,7 @@ export const EmudeckLibrary: FC<{ revision: number }> = ({ revision }) => {
             layout="below"
             disabled={disabled}
             description={item.installed ? "Installed" : "Not installed"}
-            onClick={() => setSelected(item)}
+            onClick={() => setSelectedId(item.rom_id)}
           >
             {item.name}
           </ButtonItem>

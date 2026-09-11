@@ -1,7 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { EmudeckLibrary } from "./EmudeckLibrary";
-import { getSrmStatus, updateSrmLibrary, removeRom } from "../api/backend";
+import { getSrmStatus, updateSrmLibrary, removeRom, listCatalogueEntries } from "../api/backend";
 
 vi.mock("@decky/ui", () => ({
   PanelSection: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -57,7 +57,9 @@ it("reports an unsupported environment without offering a restart", async () => 
 it("can delete a persisted ROM without owning a Steam shortcut", async () => {
   render(<EmudeckLibrary revision={0} />);
   fireEvent.click(await screen.findByText("Homebrew"));
+  vi.mocked(listCatalogueEntries).mockResolvedValueOnce({ success: true, items: [] });
   fireEvent.click(screen.getByText("Delete installed Homebrew"));
   await screen.findByText("ROM deleted. Update Steam library to reconcile SRM shortcuts.");
   expect(removeRom).toHaveBeenCalledWith(99);
+  await waitFor(() => expect(screen.queryByText("Delete installed Homebrew")).toBeNull());
 });

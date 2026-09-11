@@ -6,8 +6,10 @@ import logging
 from asyncio import gather
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 from domain.catalogue_platforms import PLATFORMS, catalogue_system
+from domain.provider_identity import is_public_id
 from domain.rom import Rom
 from domain.rom_metadata_mapping import build_rom_metadata
 from domain.shortcut_data import build_shortcuts_data
@@ -65,6 +67,11 @@ class CatalogueService:
         system = catalogue_system(entry.platform, download_section)
         return {"success": True, "entry": asdict(entry), "download": asdict(plan), "system": system}
 
+    async def bound_rom_id(self, catalogue_url: str) -> int | None:
+        # Read-only admission lookup; _inspect_io validates the actual page before mutation.
+        external_id = urlsplit(catalogue_url).path.rsplit("/", 1)[-1]
+        return await self._config.loop.run_in_executor(None, self._config.sources.find, "emuparadise", external_id)
+
     async def import_entry(self, catalogue_url: str, provider: str, download_url: str) -> dict[str, Any]:
         try:
             return await self._config.loop.run_in_executor(None, self._import_io, catalogue_url, provider, download_url)
@@ -106,8 +113,10 @@ class CatalogueService:
                     shortcut_app_id=None,
                     synced_at=self._config.clock.now().isoformat(),
                 )
-                uow.roms.save(rom)
-                uow.rom_metadata.save(rom_id, build_rom_metadata(detail, self._config.clock.time()))
+            else:
+                rom.select_download_file(detail["fs_name"])
+            uow.roms.save(rom)
+            uow.rom_metadata.save(rom_id, build_rom_metadata(detail, self._config.clock.time()))
             app_id = rom.shortcut_app_id
         shortcut = build_shortcuts_data([detail], self._config.plugin_dir, {}, {})[0]
         return {
@@ -153,6 +162,7 @@ class CatalogueService:
                 "items": [
                     {"rom_id": rom.rom_id, "name": rom.name, "installed": uow.rom_installs.get(rom.rom_id) is not None}
                     for rom in uow.roms.iter_all()
+                    if not is_public_id(rom.rom_id) or uow.rom_installs.get(rom.rom_id) is not None
                 ],
             }
 
@@ -164,8 +174,6 @@ class CatalogueService:
             return {"success": False, "reason": "import_failed", "message": str(exc)}
 
     def _import_romm_io(self, rom_id: int) -> dict[str, Any]:
-        from domain.provider_identity import is_public_id
-
         if self._config.shortcut_owner != "srm" or self._config.romm is None:
             raise ValueError("Use RomM library sync for RetroDECK")
         if rom_id <= 0 or is_public_id(rom_id):
