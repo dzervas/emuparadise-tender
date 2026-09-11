@@ -11,12 +11,13 @@ from adapters.public_catalogue.http import PublicHttpAdapter, PublicSourceError,
 
 
 class Response(io.BytesIO):
-    def __init__(self, body, content_type="application/zip", length=None):
+    def __init__(self, body, content_type: str | None = "application/zip", length=None):
         super().__init__(body)
         self.status = 200
         self.url = "https://downloads.romspedia.com/roms/Homebrew.zip"
         self.headers = Message()
-        self.headers["Content-Type"] = content_type
+        if content_type is not None:
+            self.headers["Content-Type"] = content_type
         self.headers["Content-Length"] = str(len(body) if length is None else length)
 
 
@@ -87,3 +88,20 @@ def test_redirect_checked_before_request_is_sent():
             HTTPMessage(),
             "https://localhost/secret",
         )
+
+
+@pytest.mark.parametrize("content_type", [None, "text/plain", "application/octet-stream"])
+def test_archive_signature_accepts_missing_or_generic_mime(tmp_path, content_type):
+    body = b"7z\xbc\xaf\x27\x1csynthetic fixture"
+    target = tmp_path / "download.tmp"
+    client(Response(body, content_type)).download_zip("https://downloads.romspedia.com/roms/Homebrew.7z", str(target))
+    assert target.read_bytes() == body
+
+
+def test_html_with_no_content_type_is_rejected_before_writing(tmp_path):
+    target = tmp_path / "download.tmp"
+    with pytest.raises(PublicSourceError, match="supported ZIP or 7z"):
+        client(Response(b"<html>Unavailable</html>", None)).download_zip(
+            "https://downloads.romspedia.com/roms/Homebrew.7z", str(target)
+        )
+    assert not target.exists()
