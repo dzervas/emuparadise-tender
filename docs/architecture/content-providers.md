@@ -291,3 +291,14 @@ Update the ROM filename and metadata when rebinding; never rewrite installed-fil
 ownership. Failed/uninstalled public entries stay available for identity reuse but
 are omitted from the EmuDeck library list. RomM's explicit import-to-download flow
 keeps its uninstalled entries visible.
+
+
+## Game-level lookup and provider regions
+
+Normalize catalogue metadata before removing a trailing ROM/ISO label, so
+`Crash Bash (E) ISO[SCES-02834]` searches as `Crash Bash`. Match the normalized game
+and the explicit platform independently of the selected catalogue region. Follow
+published pagination within the existing six-page search budget and resolve every
+matching variant found, rather than stopping at the first page or first two matches.
+Expose region labels from the provider's published filename, never from the selected
+EmuParadise entry; keep unknown regions explicit and the full filename visible.

@@ -1300,6 +1300,7 @@ export interface CatalogueDownloadOption {
   filename: string;
   archive: string;
   size: string | null;
+  region?: string | null;
 }
 export const searchCatalogue = callable<
   [string],

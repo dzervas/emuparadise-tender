@@ -13,7 +13,7 @@ from models.content_provider import DownloadPlan
 from adapters.public_catalogue.http import PublicHttpAdapter, PublicSourceError, checked_url
 from adapters.public_catalogue.page import PublicPage
 from adapters.seven_zip import ensure_7z_available
-from domain.catalogue_matching import base_title, title_key
+from domain.catalogue_matching import base_title, download_region, title_key
 
 _logger = logging.getLogger(__name__)
 
@@ -45,7 +45,14 @@ def _archive_plan(provider: str, page_url: str, urls: list[str], host: str) -> D
         raise PublicSourceError(f"Unsupported archive filename: {filename!r}; supported formats are ZIP and 7z")
     if archive == "7z":
         ensure_7z_available()
-    return DownloadPlan(provider=provider, page_url=page_url, file_url=file_url, filename=filename, archive=archive)
+    return DownloadPlan(
+        provider=provider,
+        page_url=page_url,
+        file_url=file_url,
+        filename=filename,
+        archive=archive,
+        region=download_region(filename),
+    )
 
 
 def _size(page: PublicPage) -> str | None:
@@ -71,8 +78,6 @@ class _SearchDownloads:
                     continue
                 if urlsplit(target).path.split("/")[2] == platform and target not in urls:
                     urls.append(target)
-            if urls:
-                break
             next_page = None
             for link in page.links:
                 try:
@@ -91,7 +96,7 @@ class _SearchDownloads:
             url = next_page
         plans = []
         errors = []
-        for target in urls[:2]:
+        for target in urls:
             try:
                 plans.append(self.resolve(target))
             except (PublicSourceError, URLError) as exc:

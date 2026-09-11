@@ -84,6 +84,7 @@ beforeEach(() => {
         filename: "Homebrew.zip",
         archive: "zip",
         size: "20 KB",
+        region: "Europe",
         provider: "romspedia",
         page_url: "https://provider/game",
       },
@@ -117,7 +118,7 @@ async function select() {
   fireEvent.change(screen.getByLabelText("Search games"), { target: { value: "Homebrew" } });
   fireEvent.click(screen.getByText("Search EmuParadise"));
   fireEvent.click(await screen.findByText("Homebrew – Nintendo Game Boy"));
-  return screen.findByText("ZIP – 20 KB – Romspedia");
+  return screen.findByText("Romspedia – Europe – ZIP – 20 KB");
 }
 
 it("searches, shows download metadata, and downloads the selected source", async () => {
@@ -145,7 +146,7 @@ it("keeps EmuDeck shortcut ownership with SRM", async () => {
 it("clears old sources after the query changes", async () => {
   await select();
   fireEvent.change(screen.getByLabelText("Search games"), { target: { value: "Other" } });
-  expect(screen.queryByText("ZIP – 20 KB – Romspedia")).toBeNull();
+  expect(screen.queryByText("Romspedia – Europe – ZIP – 20 KB")).toBeNull();
   expect(screen.queryByText("Homebrew – Nintendo Game Boy")).toBeNull();
 });
 it("limits the result list to five games", async () => {
@@ -263,6 +264,7 @@ it("shows every provider outcome and a 7z option without a downloader selector",
         filename: "Homebrew (USA).7z",
         archive: "7z",
         size: "2 GB",
+        region: "USA",
         provider: "romsdl",
         page_url: "https://provider/game",
       },
@@ -277,7 +279,7 @@ it("shows every provider outcome and a 7z option without a downloader selector",
   fireEvent.change(screen.getByLabelText("Search games"), { target: { value: "Homebrew" } });
   fireEvent.click(screen.getByText("Search EmuParadise"));
   fireEvent.click(await screen.findByText("Homebrew – Nintendo Game Boy"));
-  await screen.findByText("7Z – 2 GB – RomsDL");
+  await screen.findByText("RomsDL – USA – 7Z – 2 GB");
   expect(screen.getByText("Romspedia: No matching published downloads")).toBeInTheDocument();
   expect(screen.getByText("RomsDL: 1 download option(s)")).toBeInTheDocument();
   expect(screen.getByText("extra: Source unavailable")).toHaveStyle({ color: "#ff7070" });

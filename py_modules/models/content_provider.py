@@ -22,3 +22,4 @@ class DownloadPlan:
     filename: str
     archive: str = "zip"
     size: str | None = None
+    region: str | None = None

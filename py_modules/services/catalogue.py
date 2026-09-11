@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
+from domain.catalogue_matching import base_title
 from domain.catalogue_platforms import PLATFORMS, catalogue_system
 from domain.provider_identity import is_public_id
 from domain.rom import Rom
@@ -216,7 +217,9 @@ class CatalogueService:
             platform = next(row[1] for row in PLATFORMS if row[0] == entry.platform)
             providers = list(self._config.resolvers.items())
             for provider, _ in providers:
-                _logger.info("Searching download provider %s: title=%r platform=%s", provider, entry.title, platform)
+                _logger.info(
+                    "Searching download provider %s: title=%r platform=%s", provider, base_title(entry.title), platform
+                )
             answers = await gather(
                 *[
                     self._config.loop.run_in_executor(None, resolver.search, entry.title, platform)

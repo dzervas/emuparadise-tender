@@ -278,7 +278,8 @@ export const CataloguePage: FC<{ onBack: () => void }> = ({ onBack }) => {
           downloads.map((option) => (
             <PanelSectionRow key={`${option.provider}:${option.page_url}`}>
               <ButtonItem layout="below" disabled={busy} description={option.filename} onClick={() => download(option)}>
-                {option.archive.toUpperCase()} – {option.size || "Size unknown"} – {providerLabel(option.provider)}
+                {providerLabel(option.provider)} – {option.region || "Unknown region"} – {option.archive.toUpperCase()}{" "}
+                – {option.size || "Size unknown"}
               </ButtonItem>
             </PanelSectionRow>
           ))}

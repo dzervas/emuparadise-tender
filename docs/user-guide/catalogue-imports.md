@@ -9,7 +9,7 @@ Open **Tender → Catalogue** in Game Mode. RomM is optional for this workflow.
 3. Select a title to find matching Romspedia and RomsDL downloads. Searches match the
    normalized game title and exact platform; they do not promise identical regional
    revisions. Check the filename shown under each option.
-4. Choose a **ZIP/7Z – size – provider** button to import and queue that download.
+4. Choose a **provider – region – ZIP/7Z – size** button to import and queue that download.
    A missing published file size is displayed as **Size unknown**. Unavailable
    providers are reported separately, so another provider can still be used.
 5. RetroDECK gets Tender's existing Steam shortcut and available artwork. EmuDeck
@@ -160,3 +160,10 @@ game. Tender keeps its local identity and updates the source and filename. Finis
 or cancel that game's active/paused download first; delete an installed copy before
 switching sources. Failed or uninstalled public entries are hidden from the EmuDeck
 library list; search again to retry. Installation records and save files are preserved.
+
+
+Catalogue region tags and disc IDs are removed from provider search queries.
+Choose among the providers' available regions explicitly; options label the region
+from the published download filename, or show Unknown region. A selected catalogue
+region does not filter out other source regions. Search follows up to six published
+result pages and includes every matching variant found within that search budget.
