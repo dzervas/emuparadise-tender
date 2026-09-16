@@ -1,6 +1,6 @@
 {
   "name": "emuparadise-tender",
-  "version": "0.32.3",
+  "version": "0.33.0",
   "description": "Search EmuParadise and install games through public download providers",
   "type": "module",
   "scripts": {
