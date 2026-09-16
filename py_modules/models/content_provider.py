@@ -20,6 +20,7 @@ class DownloadPlan:
     page_url: str
     file_url: str
     filename: str
+    platform: str | None = None
     archive: str = "zip"
     size: str | None = None
     region: str | None = None

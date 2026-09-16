@@ -64,8 +64,8 @@ class TestBuildPluginArchive(unittest.TestCase):
 
     def test_failed_build_preserves_previous_archive(self):
         self.destination.write_bytes(b"previous archive")
-        (self.root / "py_modules/native/libgavel-x86_64-linux.so").unlink()
-        with self.assertRaisesRegex(ValueError, "Missing required"):
+        (self.root / "main.py").unlink()
+        with self.assertRaisesRegex(ValueError, "Missing regular runtime file"):
             _MODULE.build_archive(self.root, self.destination)
         self.assertEqual(self.destination.read_bytes(), b"previous archive")
         self.assertFalse(self.destination.with_suffix(".zip.tmp").exists())

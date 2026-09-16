@@ -1,7 +1,7 @@
 {
-  "name": "decky-romm-sync",
+  "name": "emuparadise-tender",
   "version": "0.32.3",
-  "description": "Decky Loader plugin to sync your RomM library to Steam as non-steam shortcuts",
+  "description": "Search EmuParadise and install games through public download providers",
   "type": "module",
   "scripts": {
     "build": "rollup -c",

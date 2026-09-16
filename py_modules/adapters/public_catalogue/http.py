@@ -100,18 +100,39 @@ class PublicHttpAdapter:
                 raise PublicSourceError("The source page is too large")
             return body.decode(response.headers.get_content_charset() or "utf-8", errors="replace")
 
+    def archive_metadata(self, url: str, *, referer: str) -> tuple[str, str | None]:
+        request = urllib.request.Request(
+            checked_url(url, self._hosts), method="HEAD", headers={"User-Agent": self._user_agent, "Referer": referer}
+        )
+        with self._opener.open(request, timeout=30) as response:
+            checked_url(response.url, self._hosts)
+            filename = response.headers.get_filename()
+            if (
+                not filename
+                or filename.rsplit(".", 1)[-1].lower() not in {"zip", "7z"}
+                or any(c in filename for c in "/\\")
+                or any(ord(c) < 32 for c in filename)
+            ):
+                raise PublicSourceError("The provider did not publish a valid archive filename")
+            length = response.headers.get("Content-Length")
+            return filename, f"{int(length) / 1024 / 1024:.1f} MiB" if length else None
+
     def download_zip(
         self,
         url: str,
         dest: str,
         progress_callback: Callable[[int, int], None] | None = None,
         *,
+        referer: str | None = None,
         resume: bool = False,
         on_meta: Callable[[bool], None] | None = None,
     ) -> None:
         if resume:
             raise PublicSourceError("This source requires restarting the download")
-        request = urllib.request.Request(checked_url(url, self._hosts), headers={"User-Agent": self._user_agent})
+        headers = {"User-Agent": self._user_agent}
+        if referer:
+            headers["Referer"] = referer
+        request = urllib.request.Request(checked_url(url, self._hosts), headers=headers)
         with self._opener.open(request, timeout=30) as response:
             checked_url(response.url, self._hosts)
             if response.status != 200:

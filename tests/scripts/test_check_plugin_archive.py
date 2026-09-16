@@ -22,10 +22,7 @@ _PAYLOAD = (
     "bin/rom-launcher",
     "config.json",
     "py_modules/bootstrap/__init__.py",
-    "py_modules/bootstrap/adapters.py",
-    "py_modules/bootstrap/services.py",
     "py_modules/db/migrations/001_initial.sql",
-    "py_modules/native/libgavel-x86_64-linux.so",
     "py_modules/_vendor/atlas/__init__.py",
     "py_modules/_vendor/atlas/data/system_ids.json",
 )
@@ -56,7 +53,7 @@ class TestPluginArchive(unittest.TestCase):
         _MODULE.validate_archive(self.archive)
 
     def test_missing_runtime_payload(self):
-        for path in ("py_modules/db/migrations/001_initial.sql", "py_modules/native/libgavel-x86_64-linux.so"):
+        for path in ("py_modules/db/migrations/001_initial.sql", "py_modules/bootstrap/__init__.py"):
             with self.subTest(path=path):
                 self.package(omitted=path)
                 with self.assertRaisesRegex(ValueError, "Missing required entries"):

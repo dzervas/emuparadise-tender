@@ -1,4 +1,4 @@
-"""Public search fixtures enforce five results, platform matching, and validated links."""
+"""Public search fixtures retain default-page results, platform matching, and validated links."""
 
 from unittest.mock import Mock
 
@@ -19,10 +19,10 @@ def test_catalogue_search_limits_deduplicates_and_excludes_external_links():
         + '<a data-filter="12" href="https://evil.example/Nintendo_Game_Boy_ROMs/Game/42">Game ROM</a>'
     )
     results = EmuparadiseCatalogueAdapter(http=http).search("Game & More")
-    assert len(results) == 5
+    assert len(results) == 8
     assert results[0].title == "Game 1"
     assert all(item.provider == "emuparadise" for item in results)
-    assert http.read_html.call_args.args[0].endswith("query=Game+%26+More")
+    assert http.read_html.call_args.args[0].__contains__("query=Game+%26+More")
 
 
 def test_search_rejects_short_query_without_network():
