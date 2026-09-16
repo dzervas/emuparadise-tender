@@ -23,7 +23,6 @@ if TYPE_CHECKING:
         CatalogueSourceStore,
         Clock,
         DownloadResolverReader,
-        RomDetailReader,
         SystemResolver,
         UnitOfWorkFactory,
     )
@@ -43,7 +42,6 @@ class CatalogueServiceConfig:
     loop: asyncio.AbstractEventLoop
     plugin_dir: str
     shortcut_owner: str = "tender"
-    romm: RomDetailReader | None = None
 
 
 class CatalogueService:
@@ -61,10 +59,10 @@ class CatalogueService:
 
     def _inspect_io(self, catalogue_url: str, provider: str, download_url: str) -> dict[str, Any]:
         if provider not in self._config.resolvers:
-            raise ValueError("Choose Romspedia or RomsDL")
+            raise ValueError("Choose an available download provider")
         entry = self._config.catalogue.get_entry(catalogue_url)
         plan = self._config.resolvers[provider].resolve(download_url)
-        download_section = plan.page_url.split("/")[4]
+        download_section = plan.platform or plan.page_url.split("/")[4]
         system = catalogue_system(entry.platform, download_section)
         return {"success": True, "entry": asdict(entry), "download": asdict(plan), "system": system}
 
@@ -163,38 +161,9 @@ class CatalogueService:
                 "items": [
                     {"rom_id": rom.rom_id, "name": rom.name, "installed": uow.rom_installs.get(rom.rom_id) is not None}
                     for rom in uow.roms.iter_all()
-                    if not is_public_id(rom.rom_id) or uow.rom_installs.get(rom.rom_id) is not None
+                    if is_public_id(rom.rom_id)
                 ],
             }
-
-    async def import_romm(self, rom_id: int) -> dict[str, Any]:
-        try:
-            return await self._config.loop.run_in_executor(None, self._import_romm_io, rom_id)
-        except Exception as exc:
-            _logger.exception("Catalogue operation failed")
-            return {"success": False, "reason": "import_failed", "message": str(exc)}
-
-    def _import_romm_io(self, rom_id: int) -> dict[str, Any]:
-        if self._config.shortcut_owner != "srm" or self._config.romm is None:
-            raise ValueError("Use RomM library sync for RetroDECK")
-        if rom_id <= 0 or is_public_id(rom_id):
-            raise ValueError("Enter a valid RomM ROM ID")
-        detail = self._config.romm.get_rom(rom_id)
-        system = self._config.resolve_system(detail["platform_slug"], detail.get("platform_fs_slug"))
-        with self._config.uow_factory() as uow:
-            if uow.roms.get(rom_id) is None:
-                uow.roms.save(
-                    Rom.synced(
-                        rom_id=rom_id,
-                        platform_slug=system,
-                        name=detail["name"],
-                        fs_name=detail["fs_name"],
-                        shortcut_app_id=None,
-                        synced_at=self._config.clock.now().isoformat(),
-                    )
-                )
-                uow.rom_metadata.save(rom_id, build_rom_metadata(detail, self._config.clock.time()))
-        return {"success": True, "rom_id": rom_id}
 
     async def has_bound_shortcuts(self) -> bool:
         return await self._config.loop.run_in_executor(None, self._has_bound_io)
@@ -203,10 +172,10 @@ class CatalogueService:
         with self._config.uow_factory() as uow:
             return any(rom.shortcut_app_id is not None for rom in uow.roms.iter_all())
 
-    async def search(self, query: str) -> dict[str, Any]:
+    async def search(self, query: str, platform: str = "any") -> dict[str, Any]:
         try:
-            entries = await self._config.loop.run_in_executor(None, self._config.catalogue.search, query)
-            return {"success": True, "items": [asdict(entry) for entry in entries[:5]]}
+            entries = await self._config.loop.run_in_executor(None, self._config.catalogue.search, query, platform)
+            return {"success": True, "items": [asdict(entry) for entry in entries]}
         except Exception as exc:
             _logger.exception("Catalogue operation failed")
             return {"success": False, "reason": "search_failed", "message": str(exc), "items": []}

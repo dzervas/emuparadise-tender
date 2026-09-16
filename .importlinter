@@ -114,34 +114,9 @@ forbidden_modules =
 name = Services must not import other services
 type = independence
 modules =
-    services.achievements
     services.catalogue
     services.active_core_resolver
-    services.artwork
-    services.connection
-    services.cores
-    services.data_location
-    services.disc
     services.disc_launch_resolver
     services.downloads
-    services.firmware
-    services.game_detail
-    services.game_process
-    services.launch_gate
-    services.legacy_install
-    services.library
-    services.metadata
-    services.migration
-    services.playtime
-    services.prune
-    services.relaunch_options_resolver
-    services.rom_adoption
     services.rom_install_recorder
     services.rom_removal
-    services.saves
-    services.session_lifecycle
-    services.settings
-    services.shortcut_removal
-    services.startup_healing
-    services.steamgrid
-    services.version_switch

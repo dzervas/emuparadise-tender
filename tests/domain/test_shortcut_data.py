@@ -477,18 +477,3 @@ class TestBuildShortcutsDataVersionMetadata:
         reconstructed = {"id": 10, "name": "Zelda (USA)", "igdb_id": 100, "sibling_group_key": "igdb:100:57"}
         result = build_shortcuts_data([reconstructed], "/plugin", {}, {})
         assert result[0]["sibling_group_key"] == "igdb:100:57"
-
-    def test_reconstructed_and_fetched_sibling_land_in_one_bucket(self):
-        # The end-to-end #1296 regression: a reconstructed representative (persisted
-        # key, no platform_id) and a freshly fetched sibling of the same game
-        # (platform_id + igdb_id, no key) must resolve to the SAME group key so the
-        # preview collapse buckets them as ONE game — not a phantom "new".
-        from domain.sync_diff import collapse_sibling_groups
-
-        reconstructed = {"id": 10, "name": "Zelda (USA)", "sibling_group_key": "igdb:100:57"}
-        fetched = {"id": 11, "name": "Zelda (JP)", "igdb_id": 100, "platform_id": 57}
-        result = build_shortcuts_data([reconstructed, fetched], "/plugin", {}, {})
-        assert {sd["sibling_group_key"] for sd in result} == {"igdb:100:57"}
-
-        emitted = collapse_sibling_groups(result, registry={}, installed_rom_ids=set(), complete_group_view=True)
-        assert len(emitted) == 1  # one bucket → one representative

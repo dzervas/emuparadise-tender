@@ -41,13 +41,27 @@ class EmuparadiseCatalogueAdapter:
             description=page.meta.get("og:description", ""),
         )
 
-    def search(self, query: str) -> list[CatalogueEntry]:
+    def search(self, query: str, platform: str = "any") -> list[CatalogueEntry]:
         query = query.strip()
         if not 2 <= len(query) <= 100:
             raise PublicSourceError("Search with 2-100 characters")
-        url = "https://www.emuparadise.me/roms/search.php?" + urlencode({"query": query})
+        system = "psx" if platform == "ps1" else platform
+        allowed = {row[0] for row in PLATFORMS if platform == "any" or row[2] == system}
+        if platform not in {"any", "ps1", "switch", "ps3"} | {row[2] for row in PLATFORMS}:
+            raise PublicSourceError("Unknown platform")
+        # These systems have no EmuParadise catalogue; never return another platform.
+        if not allowed:
+            return []
+        url = "https://www.emuparadise.me/roms/search.php?" + urlencode(
+            {
+                "query": query,
+                "section": "roms",
+                "sysid": {"psx": 2, "ps2": 41, "psp": 44, "gc": 42, "wii": 68, "gb": 12, "gbc": 11, "gba": 31}.get(
+                    system, 0
+                ),
+            }
+        )
         page = PublicPage(self._http.read_html(url))
-        supported = {row[0] for row in PLATFORMS}
         results = {}
         for link in page.links:
             if not link.get("data-filter"):
@@ -57,10 +71,12 @@ class EmuparadiseCatalogueAdapter:
             except ValueError:
                 continue
             match = re.fullmatch(r"/([^/]+)/[^/]+/([0-9]+)", unquote(urlsplit(target).path))
-            if not match or match[1] not in supported or urlsplit(target).query:
+            if not match or match[1] not in allowed or urlsplit(target).query:
                 continue
             title = re.sub(r"\s+(?:ROM|ISO)\s*$", "", link["text"].strip())
             if title:
-                results.setdefault(match[2], CatalogueEntry("emuparadise", match[2], target, title, match[1]))
-        ranked = sorted(results.values(), key=lambda item: (title_key(item.title) != title_key(query),))
-        return ranked[:5]
+                results.setdefault(
+                    match[2],
+                    CatalogueEntry("emuparadise", match[2], target, title, match[1], link.get("image") or None),
+                )
+        return sorted(results.values(), key=lambda item: (title_key(item.title) != title_key(query),))

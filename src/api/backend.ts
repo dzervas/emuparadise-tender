@@ -1,291 +1,23 @@
 import { callable } from "@decky/api";
 import { detach } from "../utils/detach";
 import type {
-  PluginSettings,
-  SyncStats,
-  SyncRunsAnswer,
-  SyncStatusAnswer,
   DownloadItem,
   InstalledRom,
-  PlatformSyncSetting,
-  CollectionSyncSetting,
-  CollectionKind,
-  CollectionOwnerScope,
-  CollectionNamingMode,
-  RegistryPlatform,
-  FirmwareStatus,
-  FirmwareDownloadResult,
-  BiosLevel,
-  BiosStatus,
-  BiosFileStatus,
-  CoreInfo,
-  SystemCoreInfo,
-  RomMetadata,
-  SaveSyncSettings,
-  SaveStatus,
-  SaveSyncDisplay,
-  SyncConflict,
   RommErrorCode,
-  SyncPreview,
-  PendingPreviewAnswer,
-  SessionBudgetStatus,
-  AchievementSummary,
-  AchievementList,
-  AchievementProgress,
-  SaveSlotSummary,
-  SaveSetupInfo,
-  SlotSavesResponse,
-  SwitchSlotResponse,
-  LaunchVerdict,
-  SlotDeleteInfo,
-  SlotMigrationConflict,
-  DeleteSlotResult,
-  MigrationStatus,
-  MigrationResult,
-  RetroDeckStatus,
-  SaveSortMigrationStatus,
-  RollbackStatus,
-  ListFileVersionsResult,
-  CopySaveToSlotStatus,
-  ListDevicesResponse,
   TargetOccupiedResult,
   CandidatesFoundResult,
   UnusableNamesakeResult,
   CandidateVanishedResult,
   RenameCollisionsResult,
   CollisionChoice,
-  AdoptResult,
-  VerifyContentResult,
 } from "../types";
 
 export interface BackendResult {
   success: boolean;
   message: string;
   reason?: RommErrorCode;
-  romm_version?: string;
-  /** Set when a callable was rejected because a RetroDECK migration is pending. */
-  blocked_by_migration?: boolean;
-  prune_lease_token?: string;
 }
 
-export interface CallableFailure {
-  success: false;
-  reason: string;
-  message: string;
-}
-
-export function isCallableFailure(value: object): value is CallableFailure {
-  return "success" in value && value.success === false;
-}
-
-/**
- * Narrow a `start_download` reply to the refusal that carries the collision
- * comparison. Keyed on the `reason` slug rather than the presence of `existing`,
- * so a future refusal that happens to carry a payload is not mistaken for one.
- */
-export function isTargetOccupied(value: object): value is TargetOccupiedResult {
-  return "reason" in value && (value as { reason?: unknown }).reason === "target_occupied";
-}
-
-/**
- * Narrow a `start_download` reply to the refusal that carries the short list of
- * files on this device that could be this game under another name (#260). Keyed
- * on the `reason` slug for the same reason `isTargetOccupied` is.
- */
-export function isCandidatesFound(value: object): value is CandidatesFoundResult {
-  return "reason" in value && (value as { reason?: unknown }).reason === "adoption_candidates";
-}
-
-/**
- * Narrow a `start_download` reply to the refusal naming entries that carry this
- * game's name and cannot become its install — the other shape, or a symlink
- * (#260). Same slug-keyed test as its siblings; what it offers is a second copy
- * or a stop.
- */
-export function isUnusableNamesake(value: object): value is UnusableNamesakeResult {
-  return "reason" in value && (value as { reason?: unknown }).reason === "unusable_namesake";
-}
-
-/**
- * Narrow a `start_download` reply to the backstop: the page reported a copy and
- * the click-time search found nothing it could name (#260). Last in the chain,
- * so a more specific refusal always wins over it.
- */
-export function isCandidateVanished(value: object): value is CandidateVanishedResult {
-  return "reason" in value && (value as { reason?: unknown }).reason === "candidate_vanished";
-}
-
-/**
- * Narrow an `adopt_existing_rom` reply to the refusal that lists every name the
- * rename needs and cannot have. Nothing was moved when this comes back.
- */
-export function isRenameCollisions(value: object): value is RenameCollisionsResult {
-  return "reason" in value && (value as { reason?: unknown }).reason === "rename_collisions";
-}
-
-/**
- * The BIOS half of a backend answer: the requirement, plus the level and label
- * the backend pre-computed for it. Shipped by `get_bios_status` and, under the
- * same keys, inside a cached game detail — so one projection
- * (`utils/playSection.extractBiosInfo`) reads both.
- *
- * An absent `bios_status` means the active core needs no BIOS and clears a shown
- * requirement (#1690). `bios_status_unknown` marks the payload that carries no
- * answer at all — a cached game detail, which never carries one whatever the
- * caches hold; a live check that raised; or one that ran and could not ask the
- * platform's emulators — and it ships the identical absent `bios_status`, so the
- * flag is the only thing keeping a failed check from taking a missing-BIOS
- * warning off the page (#1693).
- *
- * The last of those three IS an answer, and `bios_level` is what says so: a
- * check that ran and could not establish the requirement ships `"unknown"`,
- * where one that raised ships none. A consumer that renders the unknown state
- * needs the pair; one that only defends a shown requirement needs the flag
- * alone (#1660).
- */
-export interface BiosAnswer {
-  bios_status?: {
-    needs_bios?: boolean;
-    platform_slug: string;
-    server_count: number;
-    local_count: number;
-    all_downloaded: boolean;
-    required_count?: number;
-    required_downloaded?: number;
-    required_withheld?: number;
-    cached_at?: number;
-    files?: BiosFileStatus[];
-  } | null;
-  bios_level?: BiosLevel | null;
-  bios_label?: string | null;
-  bios_status_unknown?: boolean;
-}
-
-export interface CachedGameDetail extends BiosAnswer {
-  found: boolean;
-  rom_id?: number;
-  rom_name?: string;
-  platform_slug?: string;
-  platform_name?: string;
-  installed?: boolean;
-  save_sync_enabled?: boolean;
-  save_status?: {
-    files: Array<{ filename: string; status: string; last_sync_at?: string }>;
-    last_sync_check_at?: string;
-    conflicts?: SyncConflict[];
-  } | null;
-
-  metadata?: Record<string, unknown> | null;
-  rom_file?: string;
-  ra_id?: number | null;
-  achievement_summary?: AchievementSummary | null;
-  save_sync_display?: SaveSyncDisplay | null;
-  stale_fields?: string[];
-  // Version metadata (ADR-0021) — the RomM sibling-group dimensions of the
-  // active version, rendered read-only as the Region/Languages rows in
-  // RomMGameInfoPanel's GAME INFO section (the version switcher is separate).
-  regions?: string[];
-  languages?: string[];
-  revision?: string;
-  tags?: string[];
-  is_main_sibling?: boolean;
-  // Server-reported ROM size in bytes (#1395), surfaced so the game-detail UI
-  // can show the space a download needs. Optional/null when the size is unknown
-  // (a pre-migration row or a not-yet-re-applied platform); the frontend hides
-  // the size in that case.
-  fs_size_bytes?: number | null;
-  // Whether something already sits where a download would write (#260). Only
-  // ever true for a ROM with no install record — one `stat`, no network — so the
-  // page can offer "already here" instead of an undifferentiated Download. False
-  // is "nothing found or nothing knowable"; the full comparison runs at click
-  // time (ADR-0028).
-  target_path_occupied?: boolean;
-  /**
-   * Whether the platform folder holds an entry that could be this game under
-   * another name (#260). Read at page open so the button can say so without the
-   * user pressing Download to find out. Distinct from `target_path_occupied`:
-   * that one is content at this ROM's own location, which wins when both are
-   * true.
-   *
-   * The page and the click-time search answer from different knowledge — a
-   * `roms` row against the server payload — and are not held to agreeing; they
-   * have diverged on the served shape, the platform folder, the matched name and
-   * the directory listing itself. So this can be true for something the search
-   * then finds unusable, and the label overpromises.
-   *
-   * What still holds is what the label actually promises: pressing ends in an
-   * answer. Every way the search can find less than this did is a refusal that
-   * says so, and the last of them is a backstop for the ways nobody has thought
-   * of yet — which is why this value is sent back on the press.
-   */
-  adoption_candidate_present?: boolean;
-}
-
-// get_cached_game_detail wiring lives in utils/cachedGameDetailStore.ts so the
-// module-scope cache + invalidation surface is in one place. Re-exported here
-// for back-compat with existing import sites.
-export { getCachedGameDetail, invalidateCachedGameDetail } from "../utils/cachedGameDetailStore";
-export const getSettings = callable<[], PluginSettings>("get_settings");
-export const saveServerUrl = callable<[string, boolean], BackendResult>("save_server_url");
-export const connectWithCredentials = callable<[string, string, string, boolean], BackendResult>(
-  "connect_with_credentials",
-);
-export const connectWithToken = callable<[string, string, boolean], BackendResult>("connect_with_token");
-export const connectWithPairingCode = callable<[string, string, boolean], BackendResult>("connect_with_pairing_code");
-export const signOut = callable<[], BackendResult>("sign_out");
-
-export interface WhitelistSettings {
-  disabled_defaults: string[];
-  custom_names: string[];
-}
-export const getWhitelistSettings = callable<[], WhitelistSettings>("get_whitelist_settings");
-export const updateWhitelistSettings = callable<[string[], string[]], { success: boolean; message?: string }>(
-  "update_whitelist_settings",
-);
-
-export const testConnection = callable<[], BackendResult>("test_connection");
-export const startSync = callable<[], BackendResult>("start_sync");
-export const cancelSync = callable<[string], BackendResult>("cancel_sync");
-export const syncHeartbeat = callable<[], { success: boolean }>("sync_heartbeat");
-export const syncPreview = callable<[], SyncPreview>("sync_preview");
-export const syncApplyDelta = callable<[string], BackendResult>("sync_apply_delta");
-export const syncCancelPreview = callable<[], BackendResult>("sync_cancel_preview");
-/**
- * The preview the backend is still holding, if any — how a panel that was
- * navigated away from gets its card back. `preview: null` is the normal
- * "nothing pending" answer; the backend also drops (and reports as null) a
- * snapshot past its 30-minute TTL, which the apply would refuse anyway.
- */
-export const getPendingPreview = callable<[], PendingPreviewAnswer>("get_pending_preview");
-export const getSyncStatus = callable<[], SyncStatusAnswer>("get_sync_status");
-export const getSessionBudgetStatus = callable<[], SessionBudgetStatus>("get_session_budget_status");
-export const clearSyncCache = callable<[], BackendResult>("clear_sync_cache");
-export const getSyncStats = callable<[], SyncStats>("get_sync_stats");
-// The newest recorded sync runs, newest first — the Sync page's run list.
-export const getSyncRuns = callable<[], SyncRunsAnswer>("get_sync_runs");
-/**
- * Start a download. `replaceExisting` is the user's answer to a
- * `target_occupied` or `adoption_candidates` refusal: pass `true` only after the
- * second confirmation that names the deletion, because the backend then clears
- * what the user was shown before fetching (ADR-0028).
- *
- * `candidatePath` names that content when it sat elsewhere in the platform
- * folder under another name — the backend removes it and carries its saves to
- * the canonical name, which is exactly what the confirmation promises. Pass
- * `null` for a target-path replace, and for "None of These": there the user
- * declined every candidate rather than choosing one, so nothing may be deleted
- * on their behalf. `collisionChoice` answers the save-collision dialog that
- * carry can raise, and stays `null` until that dialog has been shown.
- *
- * `true` is also how the two "cannot use what is here" refusals are answered —
- * `unusable_namesake` and `candidate_vanished`. There the user is choosing to
- * add a second copy, and no `candidatePath` goes with it, because nothing on
- * disk is being taken over or removed.
- *
- * `pageSawCandidate` is not an answer but a report — whether the game page told
- * this user a copy was on the device. The backend's last check is a backstop
- * over it, so a page that found a copy can never end in a silent download.
- */
 export const startDownload = callable<
   [number, boolean, string | null, CollisionChoice | null, boolean],
   | BackendResult
@@ -295,953 +27,30 @@ export const startDownload = callable<
   | CandidateVanishedResult
   | RenameCollisionsResult
 >("start_download");
-/**
- * Record content already on disk as this ROM's install — nothing is fetched.
- *
- * `candidatePath` names an entry elsewhere in the platform folder when the user
- * picked one the search offered; it is renamed to the canonical name, saves and
- * savestates with it. `null` adopts what is at the game's own location.
- * `collisionChoice` answers the second dialog and stays `null` until that dialog
- * has been shown — the backend refuses rather than guessing.
- */
-export const adoptExistingRom = callable<[number, string | null, CollisionChoice | null], AdoptResult>(
-  "adopt_existing_rom",
-);
-/**
- * Hash what is on disk and compare it against RomM's checksums. User-triggered
- * only. `candidatePath` picks the entry to check; `null` checks the game's own
- * location.
- */
-export const verifyExistingContent = callable<[number, string | null], VerifyContentResult>("verify_existing_content");
+
 export const cancelDownload = callable<[number], BackendResult>("cancel_download");
+
 export const pauseDownload = callable<[number], BackendResult>("pause_download");
-/**
- * Resume a paused download. Answers the collision refusal too: the occupancy
- * gate runs again on resume, so content that appeared at the game's location
- * while it sat paused turns the resume down rather than being written over.
- */
+
 export const resumeDownload = callable<[number], BackendResult | TargetOccupiedResult>("resume_download");
+
 export const getDownloadQueue = callable<[], { downloads: DownloadItem[] }>("get_download_queue");
+
 export const clearCompletedDownloads = callable<[], { success: boolean; cleared: number }>("clear_completed_downloads");
+
 export const getInstalledRom = callable<[number], InstalledRom | null>("get_installed_rom");
-export const evaluateLaunch = callable<[number], LaunchVerdict>("evaluate_launch");
-export const checkLocalDrift = callable<[number], { drifted: boolean; rom_id: number }>("check_local_drift");
-export type RelaunchOptionsResult =
-  | { success: true; app_id: number; launch_options: string; prune_lease_token: string }
-  | { success: false; reason: string; message: string }
-  | null;
-export const getRomRelaunchOptions = callable<[number], RelaunchOptionsResult>("get_rom_relaunch_options");
-/**
- * `stop_running_game` result. On success the counts describe what the backend's
- * stop ladder did to the instance running the ROM it was called for: `stopped`
- * processes received the polite stop request and `force_killed` of them had to
- * be killed after the grace window. Two failures the caller distinguishes:
- * `reason: "not_running"` — nothing of RetroDECK's was alive, which the caller
- * treats as "the overlay was stale", not as an error; and
- * `reason: "game_not_running"` — RetroDECK is alive but no instance is running
- * this ROM, so the backend signalled nothing rather than end another game.
- */
-export interface StopGameResult {
-  success: boolean;
-  reason?: string;
-  message?: string;
-  stopped?: number;
-  force_killed?: number;
-}
-export const stopRunningGame = callable<[number], StopGameResult>("stop_running_game");
-export const probeReachability = callable<[], { online: boolean }>("probe_reachability");
-export const refreshSaveStatus = callable<[number], { success: boolean }>("refresh_save_status");
+
 export const removeRom = callable<[number], BackendResult>("remove_rom");
-export const getPlatforms = callable<[], { success: boolean; platforms: PlatformSyncSetting[] }>("get_platforms");
-// `message` only comes with a refusal: both answer a bare `{success: true}`,
-// so a caller reading it on the success shape reads `undefined`.
-export const savePlatformSync = callable<[number, boolean], { success: boolean; message?: string }>(
-  "save_platform_sync",
-);
-export const setAllPlatformsSync = callable<[boolean], { success: boolean; message?: string }>(
-  "set_all_platforms_sync",
-);
-export const getCollections = callable<
-  [],
-  { success: boolean; collections: CollectionSyncSetting[]; message?: string; reason?: RommErrorCode }
->("get_collections");
-export const saveCollectionSync = callable<[string, CollectionKind, boolean], { success: boolean; message?: string }>(
-  "save_collection_sync",
-);
-// Batch stamp for a bounded, filtered subset of collections (search / per-type
-// filter active). The whole-kind Enable/Disable All keeps setAllCollectionsSync
-// so a huge id list never crosses the wire.
-export const saveCollectionsSync = callable<
-  [string[], CollectionKind, boolean],
-  { success: boolean; reason?: string; message?: string }
->("save_collections_sync");
-export const setAllCollectionsSync = callable<
-  [boolean, "standard" | "smart" | "virtual" | null],
-  { success: boolean; message?: string }
->("set_all_collections_sync");
-export const saveCollectionPlatformGroups = callable<[boolean], { success: boolean }>(
-  "save_collection_platform_groups",
-);
-// Owner-scope for the Collections tab (#1532). "all" (default) or "own" (only
-// the signed-in user's own collections). Read via getSettings().collection_owner_scope.
-export const setCollectionOwnerScope = callable<
-  [CollectionOwnerScope],
-  { success: boolean; reason?: string; message?: string }
->("set_collection_owner_scope");
-// Steam-collection naming mode (#1539). "merge" (default) unions same-named
-// collections; "by_label" appends the fine type label so they stay separate.
-// Read via getSettings().collection_naming_mode; applies on the next sync.
-export const setCollectionNamingMode = callable<
-  [CollectionNamingMode],
-  { success: boolean; reason?: string; message?: string }
->("set_collection_naming_mode");
-export const getRegistryPlatforms = callable<[], { platforms: RegistryPlatform[] }>("get_registry_platforms");
-export const removePlatformShortcuts = callable<
-  [string],
-  {
-    success: boolean;
-    // The success path returns success/app_ids/rom_ids/platform_name; the
-    // @migration_blocked gate short-circuits to success/message/
-    // blocked_by_migration and the @sync_active_blocked gate to success/
-    // reason/message, both omitting app_ids/rom_ids. Every field below the
-    // discriminant is therefore path-dependent (mirrors removeAllShortcuts).
-    app_ids?: number[];
-    rom_ids?: (string | number)[];
-    platform_name?: string;
-    prune_lease_token?: string;
-    reason?: string;
-    message?: string;
-    blocked_by_migration?: boolean;
-  }
->("remove_platform_shortcuts");
-export const removeAllShortcuts = callable<
-  [],
-  {
-    success: boolean;
-    // The success path returns only success/app_ids/rom_ids; the
-    // @migration_blocked gate short-circuits to success/message/
-    // blocked_by_migration and the @sync_active_blocked gate to success/
-    // reason/message, both omitting app_ids/rom_ids. Every field below the
-    // discriminant is therefore path-dependent.
-    reason?: string;
-    message?: string;
-    app_ids?: number[];
-    rom_ids?: (string | number)[];
-    prune_lease_token?: string;
-    blocked_by_migration?: boolean;
-  }
->("remove_all_shortcuts");
-export const getArtworkBase64 = callable<[number], { base64: string | null }>("get_artwork_base64");
-// Cache-first per-ROM cover fetch for the version picker (#1346, ADR-0021).
-// Keyed by RomM ID: a cache hit returns the cached bytes, a miss downloads the
-// ROM's cover from RomM into the cache. Works for a group version with no local
-// DB row (the picker lists not-yet-synced siblings). Every failure — offline, no
-// cover, read error — returns { base64: null } silently; it never re-downloads a
-// cached cover.
+
 export const fetchCoverBase64 = callable<[number], { base64: string | null }>("fetch_cover_base64");
-export const refreshCoverArtwork = callable<
-  [number],
-  { success: boolean; reason?: string; message: string; cover_path?: string }
->("refresh_cover_artwork");
-// Orphaned grid-image cleanup (Danger Zone). Args: the frontend's full scan of
-// live non-Steam shortcut appIds (the keep-set — RomM-owned AND foreign) and a
-// dry_run flag. A dry run returns candidate_count without deleting; the real
-// run returns removed_count. The backend guards (incomplete_scan when a bound
-// shortcut is missing from the live set, no_grid_dir) and the
-// @migration_blocked / @sync_active_blocked gates short-circuit to
-// success/reason?/message with no count.
-export const cleanupOrphanedGridImages = callable<
-  [number[], boolean],
-  {
-    success: boolean;
-    candidate_count?: number;
-    removed_count?: number;
-    reason?: string;
-    message?: string;
-    blocked_by_migration?: boolean;
-  }
->("cleanup_orphaned_grid_images");
-export const getSgdbArtworkBase64 = callable<
-  [number, number],
-  { base64: string | null; no_api_key?: boolean; prune_lease_token?: string }
->("get_sgdb_artwork_base64");
 
-/** A single SGDB game candidate for the manual picker. */
-export interface SgdbCandidate {
-  id: number;
-  name: string;
-  release_year: number | null;
-  thumb_url: string | null;
-}
-
-/** Discriminated outcome of the SGDB artwork resolution cascade. */
-export type SgdbResolution =
-  | { decision: "no_api_key" }
-  | { decision: "resolved"; sgdb_id: number }
-  | { decision: "needs_pick"; candidates: SgdbCandidate[] };
-
-/** Result of a manual SGDB name search. */
-export interface SgdbSearchResult {
-  success: boolean;
-  games: SgdbCandidate[];
-}
-
-export const getSgdbResolution = callable<[number], SgdbResolution>("get_sgdb_resolution");
-export const searchSgdbGames = callable<[string], SgdbSearchResult>("search_sgdb_games");
-export const applySgdbGameId = callable<[number, number], { success: boolean }>("apply_sgdb_game_id");
-export const reportUnitResults = callable<
-  [Record<string, number>, string, number | string, number],
-  { success: boolean; count: number; ignored?: boolean }
->("report_unit_results");
-export const reportRemovalResults = callable<
-  [(string | number)[], string | null],
-  { success: boolean; message: string }
->("report_removal_results");
-/** Disown leases stranded by a previous frontend context; called once at mount. */
-export const releaseOrphanedPruneLeases = callable<[], { success: boolean; released: number }>(
-  "release_orphaned_prune_leases",
-);
-export const releasePruneConflictLease = callable<[string], { success: boolean; message: string }>(
-  "release_prune_conflict_lease",
-);
-export const renewPruneConflictLease = callable<
-  [string],
-  { success: boolean; reason?: "stale_lease"; message: string }
->("renew_prune_conflict_lease");
-export const reconcileShortcuts = callable<
-  [number[]],
-  { success: boolean; reason?: string; message: string; unbound_count?: number }
->("reconcile_shortcuts");
-export const uninstallAllRoms = callable<
-  [],
-  {
-    success: boolean;
-    // The removal path always carries removed_count/errors/app_ids — success
-    // is False on a PARTIAL failure (some deletions failed) but the payload
-    // stays. The @migration_blocked / @sync_active_blocked gates short-circuit
-    // to success/message (+reason / blocked_by_migration) with NO payload, so
-    // a missing app_ids is the gate-refusal discriminant.
-    removed_count?: number;
-    errors?: { rom_id: string; error: string }[];
-    app_ids?: number[];
-    reason?: string;
-    message?: string;
-    blocked_by_migration?: boolean;
-    prune_lease_token?: string;
-  }
->("uninstall_all_roms");
-export const saveSgdbApiKey = callable<[string], { success: boolean; message: string }>("save_sgdb_api_key");
-export const verifySgdbApiKey = callable<[string], { success: boolean; message: string }>("verify_sgdb_api_key");
-export const saveSteamInputSetting = callable<[string], { success: boolean }>("save_steam_input_setting");
-export const applySteamInputSetting = callable<[], { success: boolean; message: string }>("apply_steam_input_setting");
-export const getFirmwareStatus = callable<[], FirmwareStatus>("get_firmware_status");
-export const downloadAllFirmware = callable<[string], FirmwareDownloadResult>("download_all_firmware");
-export const downloadRequiredFirmware = callable<[string], FirmwareDownloadResult>("download_required_firmware");
-// One row's Download button (#164). Addressed by file name within the platform,
-// like the two bulk buttons beside it — never by RomM's firmware id, which the
-// status row may have been holding since before the listing moved on.
-export const downloadPlatformFirmwareFile = callable<[string, string], FirmwareDownloadResult>(
-  "download_platform_firmware_file",
-);
-export const checkPlatformBios = callable<[string], BiosStatus>("check_platform_bios");
-export const getBiosStatus = callable<[number], BiosAnswer>("get_bios_status");
-/**
- * A single shortcut whose baked `launch_options` must be confirm-set after a
- * per-platform core change. The backend returns one entry per installed + bound
- * ROM on the platform (minus per-game-overridden ROMs); the frontend fans out
- * `setLaunchOptionsConfirmed(app_id, launch_options)` over the list.
- */
-export interface RebakeItem {
-  app_id: number;
-  launch_options: string;
-}
-
-export const setSystemCore = callable<
-  [string, string],
-  {
-    success: boolean;
-    message?: string;
-    bios_status?: BiosStatus;
-    rebake_items?: RebakeItem[];
-    prune_lease_token?: string;
-  }
->("set_system_core");
-
-/**
- * Result of pinning / clearing a per-game emulator override. On success for an
- * installed + bound ROM, the backend re-bakes and returns the fresh
- * `launch_options` (the `-e`-wrapped command for a pin, the plain command for a
- * clear) plus the shortcut's `app_id` — the frontend confirm-sets them via
- * `setLaunchOptionsConfirmed`. Both are absent/None when the ROM is uninstalled
- * or unbound (no shortcut to update). An unresolvable label hard-fails with
- * `{success: false, reason: "core_unavailable", message}`.
- */
-export interface GameCoreApplyResult {
-  success: boolean;
-  launch_options?: string;
-  app_id?: number | null;
-  prune_lease_token?: string;
-  reason?: string;
-  message?: string;
-}
-
-// Per-game override (epic #945). Keyed by rom_id — the DB pin survives
-// uninstall/reinstall (roms.emulator_override). set_game_core pins a label;
-// clear_game_core drops the pin (follow default — triggered by picking the
-// default-marked core in the menu).
-export const setGameCore = callable<[number, string], GameCoreApplyResult>("set_game_core");
-export const clearGameCore = callable<[number], GameCoreApplyResult>("clear_game_core");
-// Dedicated core-info path (#923) — active core + available cores for a ROM,
-// decoupled from the BIOS firmware status. Keyed by rom_id (#945): the active
-// core reflects the per-game DB override when one is pinned, else the platform
-// default.
-export const getPlatformCoreInfo = callable<[number], CoreInfo>("get_platform_core_info");
-// The platform-keyed twin (#1815): the Library page's Platforms detail asks it
-// once per selected platform. Distinct from getPlatformCoreInfo, which layers a
-// ROM's own pin on top and so cannot answer for a platform with no synced ROM;
-// distinct from the emulator fields on getFirmwareStatus, which cover only the
-// platforms that payload has something to say about.
-export const getSystemCoreInfo = callable<[string], SystemCoreInfo>("get_system_core_info");
-
-/** One launchable disc image within a multi-disc ROM's install directory. */
-export interface Disc {
-  filename: string;
-  label: string;
-  index: number;
-}
-
-/**
- * Disc-picker state for a ROM (#865). `multi_disc` is `false` when the ROM is
- * unknown, not installed, single-file, or has fewer than two discs — the picker
- * renders nothing. When `true` the remaining fields are present: `discs` in disc
- * order, `selected` the persisted `roms.selected_disc` (null when following the
- * default), and `default` describing the NULL-selection target (the `.m3u`
- * playlist, or disc 1).
- */
-export interface DiscSelection {
-  multi_disc: boolean;
-  discs?: Disc[];
-  selected?: string | null;
-  default?: { kind: "m3u" | "disc"; label: string; filename: string };
-}
-
-/**
- * Result of pinning / clearing a disc selection. On success the backend persists
- * the pick (or NULL when clearing back to the default) and re-bakes the
- * `launch_options` for the now-selected disc — the frontend confirm-sets it via
- * `setLaunchOptionsConfirmed`. `selected` echoes the now-effective pin (null when
- * cleared). A failure carries the canonical `{success: false, reason, message}`
- * shape (`not_found` for an unknown filename, `not_installed` / `unsupported`
- * when the ROM is not a multi-disc install).
- */
-export interface SelectDiscResult {
-  success: boolean;
-  launch_options?: string;
-  selected?: string | null;
-  reason?: string;
-  message?: string;
-  prune_lease_token?: string;
-}
-
-// Per-game disc pick (#865). Keyed by rom_id — the DB pin survives
-// uninstall/reinstall (roms.selected_disc). select_disc(rom_id, filename) pins a
-// disc by basename; select_disc(rom_id, null) clears the pin (follow the default
-// — the m3u playlist or disc 1).
-export const getDiscSelection = callable<[number], DiscSelection>("get_disc_selection");
-export const selectDisc = callable<[number, string | null], SelectDiscResult>("select_disc");
-
-/**
- * One version (RomM sibling) of a game in the version picker (#1297, ADR-0021).
- * `label` is the fs_name_no_ext-derived display text; the dimensions are the
- * version's own region/language/revision/tag attributes. `synced` is false for a
- * version that exists on the server but has no local row yet (selecting it
- * persists one); `installed` marks a downloaded version; `active` is the bound
- * version the Download button fetches; `is_default` marks the version the
- * resolution chain + Preferred-region setting would pick as the default.
- * `switchable` is false for a RomM sibling whose metadata match conflicts with
- * this game's — a locally-synced ROM under a different group key (#1359) or a
- * not-yet-synced sibling carrying a different id at the group's canonical source
- * (#1360) — the picker lists it but disables the row, because switch_version would
- * reject it; every other row is switchable (#1368). `vanished` is a separate,
- * ephemeral liveness verdict: RomM answered 404 for that exact local id during
- * this list load. The retained row stays visible but cannot be selected.
- */
-export interface VersionInfo {
-  rom_id: number;
-  name: string;
-  label: string;
-  regions: string[];
-  languages: string[];
-  revision: string;
-  tags: string[];
-  synced: boolean;
-  installed: boolean;
-  active: boolean;
-  is_default: boolean;
-  switchable: boolean;
-  vanished: boolean;
-}
-
-/**
- * Version-picker state for the group bound to an appId. `multi_version` is
- * `false` when the appId is unknown/unbound or the group has a single version —
- * the picker renders nothing. When `true`, `versions` lists every version
- * (local + server-only) with markers; `server_query_failed` is `true` when the
- * live `sibling_roms` view could not be fetched, so the list is local-only
- * (partial-success carve-out). `bound_vanished` is required even on a
- * single-version/unknown result so a bound-id 404 is never lost when the picker
- * itself does not render. A synced singleton vanished binding carries
- * `bound_version` so the frontend can render its focused cleanup action without
- * inventing a version menu. A 404 on the bound id is NOT a query failure — the
- * server answered — and the picker does not feed that entity verdict into the
- * global connection state (#1570).
- */
-export interface VersionList {
-  multi_version: boolean;
-  versions?: VersionInfo[];
-  bound_version?: VersionInfo | null;
-  server_query_failed?: boolean;
-  bound_vanished: boolean;
-}
-
-/**
- * Success outcome of a version switch (uniform across all switch paths, #1298).
- * The binding moved to `rom_id`; `launch_options` is the target install's full
- * Steam launch command when `target_installed`, or `""` for an uninstalled
- * target (the ADR-0009 placeholder). The frontend confirm-writes `launch_options`
- * onto the shortcut identified by `app_id` — even when blank, so the shortcut
- * never keeps the old version's command.
- */
-export interface SwitchVersionSuccess {
-  success: true;
-  rom_id: number;
-  target_installed: boolean;
-  launch_options: string;
-  app_id: number;
-  prune_lease_token?: string;
-}
-
-/**
- * Soft-block: switching away from a downloaded version whose local saves have
- * unsynced changes (#1298). `server_reachable` decides which confirm modal to
- * show (T4 reachable offers "Sync now & switch", T5 offline does not);
- * `unsynced_rom_id` / `unsynced_version_name` name the version that would be
- * stranded. The user resolves it with the `allow_stranded` override.
- */
-export interface SwitchVersionUnsyncedSaves {
-  success: false;
-  reason: "unsynced_saves";
-  message: string;
-  server_reachable: boolean;
-  unsynced_rom_id: number;
-  unsynced_version_name: string;
-}
-
-/**
- * Other canonical `{success, reason, message}` failures — `not_found` (unknown
- * appId), `not_in_group` (the target's metadata match conflicts with this game's),
- * `bound_elsewhere` (a grandfathered duplicate),
- * `invalid_target` (a server-only target the aggregate rejects),
- * `download_in_progress` (a group download is running — cancel it first), or
- * `version_vanished` (RomM definitively no longer has the target), or
- * `server_unreachable`. All surface via the picker's toast fallback
- * (`result.message`). The literal reason union excludes `unsynced_saves` so the
- * soft-block variant narrows cleanly.
- */
-export interface SwitchVersionFailure {
-  success: false;
-  reason:
-    | "not_found"
-    | "not_in_group"
-    | "bound_elsewhere"
-    | "invalid_target"
-    | "download_in_progress"
-    | "version_vanished"
-    | "server_unreachable";
-  message: string;
-}
-
-export type SwitchVersionResult = SwitchVersionSuccess | SwitchVersionUnsyncedSaves | SwitchVersionFailure;
-
-// Version picker (#1297, ADR-0021). Keyed by the Steam appId (the group's
-// shortcut). get_version_list reads the group's versions; switch_version moves
-// the active-version binding to a target rom_id.
-export const getVersionList = callable<[number], VersionList>("get_version_list");
-export const switchVersion = callable<[number, number, boolean], SwitchVersionResult>("switch_version");
-
-export type PruneScope = "bulk" | "rom";
-
-export interface PrunePreviewRequest {
-  scope: PruneScope;
-  rom_id: number | null;
-  preview_id: string | null;
-  offset: number;
-  limit: number;
-}
-
-export interface PrunePreviewItem {
-  rom_id: number;
-  name: string;
-  name_truncated: boolean;
-  fs_name: string;
-  fs_name_truncated: boolean;
-  platform_slug: string;
-  group_id: string;
-  group_id_truncated: boolean;
-  group_size: number;
-  bound_count: number;
-  candidate: boolean;
-  installed: boolean;
-  installed_bytes: number | null;
-  warning: string | null;
-  warning_truncated: boolean;
-}
-
-export interface PrunePreviewResult {
-  success: boolean;
-  reason?: string;
-  message?: string;
-  preview_id?: string;
-  scope?: PruneScope;
-  items?: PrunePreviewItem[];
-  offset?: number;
-  limit?: number;
-  /** Every disclosed row: the candidates plus the siblings a whole-game removal could still take. */
-  total?: number;
-  /** Only the rows this run can remove on its own — the count the dialog leads with. */
-  candidate_total?: number;
-  free_bytes?: number;
-  recovery_root?: string | null;
-  blocked_by_migration?: boolean;
-}
-
-export interface StartPruneRequest {
-  preview_id: string;
-  confirmed: boolean;
-  repoint_shortcuts: boolean;
-  remove_rows: boolean;
-  remove_fully_vanished: boolean;
-  create_recovery_bundle: boolean;
-  installed_selection_id: string | null;
-}
-
-export interface StagePruneInstalledSelectionRequest {
-  preview_id: string;
-  selection_id: string | null;
-  rom_ids: number[];
-  final: boolean;
-}
-
-export interface StartPruneResult {
-  success: boolean;
-  run_id?: string;
-  status?: "running";
-  reason?: string;
-  message?: string;
-  blocked_by_migration?: boolean;
-}
-
-export interface PruneSteamSnapshot {
-  app_id: number;
-  name: string;
-  exe: string;
-  start_dir: string;
-  launch_options: string;
-  minutes_playtime_forever: number | null;
-  minutes_playtime_last_two_weeks: number | null;
-  last_played: number | null;
-  collections: Array<{ id: string; name: string }>;
-}
-
-export interface ClaimPruneActionRequest {
-  phase: "claim";
-  run_id: string;
-  action_token: string;
-  action: "capture_shortcut_snapshot" | "repoint_shortcut" | "remove_shortcut";
-  app_id: number;
-  target_rom_id: number | null;
-}
-
-export interface CompletePruneActionRequest {
-  phase: "complete";
-  run_id: string;
-  action_token: string;
-  success: boolean;
-  reason?: string;
-  message: string;
-  snapshot?: PruneSteamSnapshot;
-  shortcut_absent?: boolean;
-  mutation_attempted?: boolean;
-}
-
-export type ReportPruneActionRequest = ClaimPruneActionRequest | CompletePruneActionRequest;
-
-export const getPrunePreview = callable<[PrunePreviewRequest], PrunePreviewResult>("get_prune_preview");
-export const stagePruneInstalledSelection = callable<
-  [StagePruneInstalledSelectionRequest],
-  {
-    success: boolean;
-    selection_id?: string;
-    selected_count?: number;
-    finalized?: boolean;
-    reason?: string;
-    message?: string;
-  }
->("stage_prune_installed_selection");
-export const startPrune = callable<[StartPruneRequest], StartPruneResult>("start_prune");
-/** Stop a run before its next group; the group already executing still finishes. */
-export const cancelPrune = callable<
-  [string],
-  { success: boolean; reason?: string; message: string; already_cancelling?: boolean }
->("cancel_prune");
-export const reportPruneAction = callable<
-  [ReportPruneActionRequest],
-  { success: boolean; ignored?: boolean; reason?: string; message: string }
->("report_prune_action");
-export const waitForPruneRelease = callable<[string], { success: boolean; reason?: string; message: string }>(
-  "wait_for_prune_release",
-);
-
-export const saveLogLevel = callable<[string], { success: boolean }>("save_log_level");
-// Preferred sibling-group region (ADR-0021 §3). "auto" = build-time default
-// order; any RomM region string heads the ranking on the next sync.
-export const savePreferredRegion = callable<[string], { success: boolean }>("save_preferred_region");
-// Sync-button intent, persisted so the choice can survive the panel closing:
-// with it on, the sync button starts the run instead of asking for a preview.
-// Read back from get_settings. Main's toggle still holds its own local state
-// and does not call this; no backend sync path consults the value either.
-export const saveSkipPreview = callable<[boolean], { success: boolean }>("save_skip_preview");
-// Distinct region values present in the locally synced library — the non-anchor
-// options for the Preferred-region dropdown. Pure local DB read, no server call.
-export const getKnownRegions = callable<[], string[]>("get_known_regions");
-export const debugLog = callable<[string], void>("debug_log");
-const frontendLog = callable<[string, string], void>("frontend_log");
 export const logInfo = (msg: string) => {
-  detach(frontendLog("info", msg));
+  detach(callable<[string], void>("log_info")(msg));
 };
-export const logWarn = (msg: string) => {
-  detach(frontendLog("warn", msg));
-};
+
 export const logError = (msg: string) => {
-  detach(frontendLog("error", msg));
+  detach(callable<[string], void>("log_error")(msg));
 };
-export const fixRetroarchInputDriver = callable<[], { success: boolean; message: string }>(
-  "fix_retroarch_input_driver",
-);
-export const getRomMetadata = callable<[number], RomMetadata>("get_rom_metadata");
-export const getMetadataCachePage = callable<[number, number], { items: Record<string, RomMetadata>; total: number }>(
-  "get_metadata_cache_page",
-);
-export const getAppIdRomIdMap = callable<[], Record<string, number>>("get_app_id_rom_id_map");
-export type InstalledRelaunchOptionsResult =
-  | {
-      success: true;
-      items: { app_id: number; launch_options: string }[];
-      prune_lease_token: string | null;
-    }
-  | { success: false; reason: string; message: string };
-export const getInstalledRelaunchOptions = callable<[], InstalledRelaunchOptionsResult>(
-  "get_installed_relaunch_options",
-);
-
-// Icon support — writes the icon PNG into Steam's grid dir and returns its
-// path; the caller points the shortcut at it via SteamClient.Apps.SetShortcutIcon.
-export const saveShortcutIcon = callable<[number, string], { success: boolean; icon_path?: string }>(
-  "save_shortcut_icon",
-);
-
-// Save sync callables
-export const ensureDeviceRegistered = callable<[], { success: boolean; device_id: string; device_name: string }>(
-  "ensure_device_registered",
-);
-
-export const listDevices = callable<[], ListDevicesResponse>("list_devices");
-export type SaveStatusResult = SaveStatus | CallableFailure;
-export const getSaveStatus = callable<[number], SaveStatusResult>("get_save_status");
-export const preLaunchSync = callable<
-  [number],
-  {
-    success: boolean;
-    message: string;
-    synced?: number;
-    // Per-direction transfer counts (#250) — additive; absent on the skip /
-    // failure branches (treat absent as 0).
-    uploaded?: number;
-    downloaded?: number;
-    errors?: string[];
-    conflicts?: SyncConflict[];
-    reason?: string;
-  }
->("pre_launch_sync");
-export const syncRomSaves = callable<
-  [number],
-  {
-    success: boolean;
-    message: string;
-    synced: number;
-    uploaded?: number;
-    downloaded?: number;
-    errors?: string[];
-    conflicts?: SyncConflict[];
-    reason?: string;
-  }
->("sync_rom_saves");
-export const syncAllSaves = callable<
-  [],
-  { success: boolean; message: string; synced: number; conflicts: number; reason?: string }
->("sync_all_saves");
-export const resolveSyncConflict = callable<
-  [number, string, number, "keep_local" | "use_server"],
-  { success: boolean; message?: string; reason?: "stale_conflict"; action?: "keep_local" | "use_server" }
->("resolve_sync_conflict");
-export const recordSessionStart = callable<[number], { success: boolean }>("record_session_start");
-export const getSaveSyncSettings = callable<[], SaveSyncSettings>("get_save_sync_settings");
-export const updateSaveSyncSettings = callable<[SaveSyncSettings], { success: boolean }>("update_save_sync_settings");
-// `last_known` is present ONLY on the failed-server-fetch branch, and is null
-// there unless the ROM's active slot was confirmed: it is the slot listing the
-// last successful contact left on disk, not an answer about now. `slots` /
-// `active_slot` keep their meaning on every branch (#1755).
-export const getSaveSlots = callable<
-  [number],
-  {
-    success: boolean;
-    slots: SaveSlotSummary[];
-    active_slot: string | null;
-    reason?: string;
-    message?: string;
-    last_known?: {
-      slots: SaveSlotSummary[];
-      active_slot: string | null;
-    } | null;
-  }
->("get_save_slots");
-export const getSlotSaves = callable<[number, string], SlotSavesResponse>("get_slot_saves");
-export const switchSlot = callable<[number, string], SwitchSlotResponse>("switch_slot");
-
-export const getSlotDeleteInfo = callable<[number, string], SlotDeleteInfo>("get_slot_delete_info");
-export const deleteSlot = callable<[number, string], DeleteSlotResult>("delete_slot");
-
-export const isSaveTrackingConfigured = callable<[number], { configured: boolean; active_slot: string | null }>(
-  "is_save_tracking_configured",
-);
-export const getSaveSetupInfo = callable<[number], SaveSetupInfo>("get_save_setup_info");
-// confirm_slot_choice(rom_id, chosen_slot, migrate, migrate_from_slot, use_server_on_conflict):
-// `chosen_slot` must be a non-empty named slot — legacy `slot:null` confirmation
-// is retired (#1276), so an empty/`null` target is rejected by the backend's
-// `invalid_slot_name` guard. `migrate` is an explicit boolean — the
-// non-destructive paths pass `false`; `migrate_from_slot` is `null` unless
-// migrating (then the source slot, with `null` meaning the legacy no-slot source).
-// A content-based migration (#1498) that finds a differing local save returns
-// `needs_conflict_resolution: true` + `conflicts` and confirms nothing — the
-// wizard asks; `use_server_on_conflict: true` resolves in the server's favour
-// (quarantine local, replace with the server content). On success the response
-// carries `migrated`/`failed` counts for the completion copy.
-export const confirmSlotChoice = callable<
-  [number, string, boolean, string | null, boolean],
-  {
-    success: boolean;
-    needs_conflict_resolution?: boolean;
-    // Canonical failure slug on a wholesale (pre-apply) migration failure —
-    // e.g. "server_unreachable" / "device_not_registered" / "not_installed".
-    // The wizard surfaces `message`; `reason` is for routing/telemetry parity.
-    reason?: string;
-    message: string;
-    conflicts?: SlotMigrationConflict[];
-    migrated?: number;
-    failed?: number;
-  }
->("confirm_slot_choice");
-export const checkCoreChange = callable<
-  [number],
-  { changed: boolean; old_core?: string; new_core?: string; old_label?: string; new_label?: string }
->("check_core_change");
-
-// Bulk playtime for plugin-load UI update. last_played is the ISO end time of
-// the newest recorded/reconciled session (null until one exists).
-export const getAllPlaytime = callable<
-  [],
-  { playtime: Record<string, { total_seconds: number; session_count: number; last_played: string | null }> }
->("get_all_playtime");
-
-// Pull-only playtime reconcile-on-view — folds RomM's native play-session
-// history in (monotonic max) so a session played on another device shows up the
-// moment the detail page is opened. Restores total_seconds, session_count AND
-// last_played across a device cutover (#903, ADR-0018). server_query_failed=true
-// means the server was unreachable and these are the local fallback.
-export const reconcilePlaytime = callable<
-  [number],
-  | { total_seconds: number; session_count: number; last_played: string | null; server_query_failed: boolean }
-  | { success: false; reason: string; message: string }
->("reconcile_playtime");
-
-// RetroDECK path-resolution health for the QAM banner — discriminated status
-// ("ok" | "absent" | "unreadable" | "root_missing") plus the probed paths. The
-// frontend owns the human-readable copy; the backend returns the discriminant.
-export const getRetroDeckStatus = callable<[], RetroDeckStatus>("get_retrodeck_status");
-
-// RetroDECK path migration
-export const getMigrationStatus = callable<[], MigrationStatus>("get_migration_status");
-export const migrateRetroDeckFiles = callable<[string | null], MigrationResult>("migrate_retrodeck_files");
-export const dismissRetrodeckMigration = callable<[], { success: boolean }>("dismiss_retrodeck_migration");
-
-export const getSaveSortMigrationStatus = callable<[], SaveSortMigrationStatus>("get_save_sort_migration_status");
-export const migrateSaveSortFiles = callable<[string | null], MigrationResult>("migrate_save_sort_files");
-export const dismissSaveSortMigration = callable<[], { success: boolean }>("dismiss_save_sort_migration");
-export const refreshMigrationState = callable<[], { retrodeck: MigrationStatus; save_sort: SaveSortMigrationStatus }>(
-  "refresh_migration_state",
-);
-
-// Persistent corrupt-settings-reset notice. When settings.json was unparseable
-// at boot it is backed up to settings.json.corrupt-<ts> and reset to defaults,
-// and a marker is persisted into the fresh settings.json. This read is
-// non-consuming: it reports pending:true with the backup filename until the
-// user explicitly dismisses it in the QAM, so the banner survives reloads.
-export const getSettingsResetNotice = callable<[], { pending: boolean; backed_up_to: string | null }>(
-  "get_settings_reset_notice",
-);
-
-// Acknowledge the corrupt-settings reset — pops the persistent marker and
-// persists, so the QAM banner + game-detail cards stay down across reloads.
-export const dismissSettingsResetNotice = callable<[], { success: boolean }>("dismiss_settings_reset_notice");
-
-// The pre-rename install standing beside this one. Releases before 0.31.0 unpack
-// into a `decky-romm-sync` plugin folder and this one does not; a user who
-// updated across that boundary has both, and a shortcut launches through a
-// launcher inside the folder it was written from. `pending` means it is there and is not the
-// folder we run from; `legacy_data_present` means that older install still has a
-// database. Two directory questions and nothing else — whether THIS install has
-// anything to show is `get_sync_stats`'s `roms`, which MainPage already reads and
-// joins with this. Read live, so there is no marker and no dismiss callable.
-export const getLegacyInstallNotice = callable<[], { pending: boolean; legacy_data_present: boolean }>(
-  "get_legacy_install_notice",
-);
-
-/** What kind of data-location condition the last start left standing. */
-export type DataLocationKind = "choice" | "failed";
-
-export interface DataLocationNotice {
-  pending: boolean;
-  /** `null` exactly when nothing is pending. */
-  kind: DataLocationKind | null;
-  /** What went wrong, on a `failed` condition only. */
-  message: string | null;
-}
-
-export interface DataLocationCandidate {
-  /** The folder name the older location sits under, and the value a choice names. */
-  source: string;
-  path: string;
-  /** Whether the folder is on disk at all. A location that has gone is still listed. */
-  present: boolean;
-  /** `null` when the reading could not be completed — never an approximation. */
-  size_bytes: number | null;
-  /** ISO-8601, `null` alongside an unmeasurable size or an absent folder. */
-  changed_at: string | null;
-}
-
-export interface DataLocationCandidates {
-  candidates: DataLocationCandidate[];
-}
-
-// Where the plugin's own data lives. `get_data_location_notice` reports what the
-// start-up migration left standing — two older installs it declined to pick
-// between, or a copy that did not finish — and is read live off what that start
-// decided, so there is no dismiss callable: neither condition ends by being
-// acknowledged. The candidates are a separate read because measuring a location
-// walks every file in it, and only the modal ever needs the numbers; it carries
-// no failure shape because every partial answer is stated on the entry it is
-// about rather than collapsing the whole list.
-export const getDataLocationNotice = callable<[], DataLocationNotice>("get_data_location_notice");
-export const getDataLocationCandidates = callable<[], DataLocationCandidates>("get_data_location_candidates");
-export const chooseDataLocation = callable<[string], { success: true } | CallableFailure>("choose_data_location");
-
-// Durable "re-sign-in for cross-device playtime" notice. The backend persists a
-// flag when a playtime reconcile is rejected because the Client API Token lacks
-// the `roms.user.read` scope; pending:true means the user should sign in again
-// to mint a scoped token. The flag clears itself once the scope is present (a
-// later successful reconcile, or a fresh sign-in), so this read is non-consuming
-// and pull-only — no backend dismiss callable, the QAM banner's Dismiss is local.
-export const getPlaytimeScopeNotice = callable<[], { pending: boolean }>("get_playtime_scope_notice");
-
-// End-of-session orchestration — collapses recordSessionEnd + syncAchievementsAfterSession
-// + postExitSync + refreshMigrationState into a single backend round-trip.
-// See SessionLifecycleService in py_modules/services/session_lifecycle.py.
-interface SessionFinalizeSyncResult {
-  offline: boolean;
-  success: boolean;
-  synced: number | null;
-  // Per-direction transfer counts. The directional completion toast is rendered
-  // frontend-side from these via the shared `saveSyncToastBody` helper — the
-  // single source of that copy (#1481).
-  uploaded: number;
-  downloaded: number;
-  conflicts: SyncConflict[];
-  // Backend-owned body for the non-directional outcomes (offline / classified
-  // failure / generic failure); `null` when no failure toast should fire —
-  // including the #239 content-dir benign skip. Mutually exclusive with the
-  // directional toast by construction.
-  failure_toast: string | null;
-  conflicts_toast: string | null;
-}
-
-interface SessionFinalizeMigration {
-  retrodeck: MigrationStatus;
-  save_sort: SaveSortMigrationStatus;
-}
-
-export interface SessionFinalizeResult {
-  total_seconds: number | null;
-  sync: SessionFinalizeSyncResult;
-  // ``null`` when the backend's migration-state refresh raised — the
-  // frontend then leaves the migration stores untouched (any stale
-  // ``pending`` badge keeps showing), matching the pre-PR behavior
-  // where ``refreshMigrationState().catch`` logged without clearing.
-  migration: SessionFinalizeMigration | null;
-}
-
-export const finalizeGameSession = callable<[number], SessionFinalizeResult>("finalize_game_session");
-
-// Delete operations
-export const deleteLocalSaves = callable<[number], { success: boolean; deleted_count: number; message: string }>(
-  "delete_local_saves",
-);
-export const deletePlatformSaves = callable<[string], { success: boolean; deleted_count: number; message: string }>(
-  "delete_platform_saves",
-);
-/** How many local save files a platform holds — the read half of
- *  `deletePlatformSaves`, walking the same path without deleting. The Library
- *  page's platform detail asks it once per selection, beside the core read. */
-export const countPlatformSaves = callable<[string], { count: number }>("count_platform_saves");
-export const deletePlatformBios = callable<[string], { success: boolean; deleted_count: number; message: string }>(
-  "delete_platform_bios",
-);
-/** One row's Delete button — the per-file twin of `deletePlatformBios`, sharing
- *  its authorisation rather than restating it. Addressed by file name, and a
- *  name the plugin holds no download record for removes nothing: the record is
- *  the only evidence we placed the file, and it is the record's own path that is
- *  unlinked. Offer it only where the row says `deletable`. */
-export const deleteBiosFile = callable<[string, string], { success: boolean; deleted_count: number; message: string }>(
-  "delete_bios_file",
-);
-/** A declared folder's Delete button. The folder has no name a download record
- *  could carry, so the files inside it are matched by being written underneath
- *  it — a filter over the platform's own records, which narrows and can never
- *  widen. The folder itself is never removed; the emulator lists it. */
-export const deleteBiosFolder = callable<
-  [string, string],
-  { success: boolean; deleted_count: number; message: string }
->("delete_bios_folder");
-
-// Save version history callables
-export const savesListFileVersions = callable<[number, string, string], ListFileVersionsResult>(
-  "saves_list_file_versions",
-);
-export const savesRollbackToVersion = callable<[number, string, number], RollbackStatus>("saves_rollback_to_version");
-export const copySaveToSlot = callable<[number, number, string], CopySaveToSlotStatus>("copy_save_to_slot");
-
-// Achievements callables
-export const getAchievements = callable<[number], AchievementList>("get_achievements");
-export const getAchievementProgress = callable<[number], AchievementProgress>("get_achievement_progress");
 
 export interface CatalogueInspection {
   success: boolean;
@@ -1250,6 +59,7 @@ export interface CatalogueInspection {
   download?: { filename: string; provider: string };
   system?: string;
 }
+
 export interface CatalogueImport {
   shortcut_owner?: "tender" | "srm";
   success: boolean;
@@ -1258,14 +68,18 @@ export interface CatalogueImport {
   app_id?: number | null;
   shortcut?: import("../types").SyncAddItem;
 }
+
 export const inspectCatalogueEntry = callable<[string, string, string], CatalogueInspection>("inspect_catalogue_entry");
+
 export const importCatalogueEntry = callable<[string, string, string], CatalogueImport>("import_catalogue_entry");
+
 export const bindCatalogueShortcut = callable<[number, number], BackendResult>("bind_catalogue_shortcut");
 
 export const getEmulatorInstallation = callable<
   [],
   { selection: string; active_selection?: string; restart_required?: boolean; message?: string }
 >("get_emulator_installation");
+
 export const saveEmulatorInstallation = callable<[string], BackendResult & { restart_required?: boolean }>(
   "save_emulator_installation",
 );
@@ -1277,23 +91,28 @@ export interface SrmStatus {
   message?: string;
   job?: { status: string; message: string };
 }
+
 export interface CatalogueItem {
   rom_id: number;
   name: string;
   installed: boolean;
 }
+
 export const getSrmStatus = callable<[], SrmStatus>("get_srm_status");
+
 export const updateSrmLibrary = callable<[], BackendResult>("update_srm_library");
+
 export const listCatalogueEntries = callable<[], { success: boolean; items: CatalogueItem[] }>(
   "list_catalogue_entries",
 );
-export const importRommCatalogueEntry = callable<[number], CatalogueImport>("import_romm_catalogue_entry");
 
 export interface CatalogueSearchItem {
+  cover_url?: string | null;
   title: string;
   platform: string;
   page_url: string;
 }
+
 export interface CatalogueDownloadOption {
   provider: string;
   page_url: string;
@@ -1302,14 +121,16 @@ export interface CatalogueDownloadOption {
   size: string | null;
   region?: string | null;
 }
+
 export const searchCatalogue = callable<
-  [string],
+  [string, string?],
   {
     success: boolean;
     items: CatalogueSearchItem[];
     message?: string;
   }
 >("search_catalogue");
+
 export const getCatalogueDownloads = callable<
   [string],
   {
@@ -1320,3 +141,7 @@ export const getCatalogueDownloads = callable<
     message?: string;
   }
 >("get_catalogue_downloads");
+
+export const getCatalogueArtwork = callable<[string], { cover_url?: string | null }>("get_catalogue_artwork");
+
+export const downloadLatestRelease = callable<[], { success: boolean; message?: string }>("download_latest_release");

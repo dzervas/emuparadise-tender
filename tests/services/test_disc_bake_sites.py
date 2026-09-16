@@ -98,51 +98,6 @@ def disc_resolver() -> FakeDiscResolver:
 # ── library-sync bake site ───────────────────────────────────────────────
 
 
-class TestLibrarySyncBakeSite:
-    def _launch_resolver(self, uow_factory, disc_resolver):
-        from services.library.shortcut_launch_resolver import ShortcutLaunchResolver, ShortcutLaunchResolverConfig
-
-        return ShortcutLaunchResolver(
-            config=ShortcutLaunchResolverConfig(
-                uow_factory=uow_factory,
-                active_core=FakeActiveCoreResolver(default=(None, None)),
-                disc_resolver=disc_resolver,
-            )
-        )
-
-    def test_scan_installed_paths_honors_pin(self, disc_resolver):
-        uow = FakeUnitOfWork()
-        _seed_multi_disc(uow, rom_id=1, selected_disc=_DISC2)
-        resolver = self._launch_resolver(FakeUnitOfWorkFactory(uow=uow), disc_resolver)
-        assert resolver.do_scan_installed_paths() == {1: _DISC2_PATH}
-
-    def test_read_installed_paths_honors_pin(self, disc_resolver):
-        uow = FakeUnitOfWork()
-        _seed_multi_disc(uow, rom_id=1, selected_disc=_DISC2)
-        resolver = self._launch_resolver(FakeUnitOfWorkFactory(uow=uow), disc_resolver)
-        assert resolver.do_read_installed_paths({1}) == {1: _DISC2_PATH}
-
-    def test_scan_installed_paths_unpinned_defaults_to_disc_1(self, disc_resolver):
-        uow = FakeUnitOfWork()
-        _seed_multi_disc(uow, rom_id=1, selected_disc=None)
-        resolver = self._launch_resolver(FakeUnitOfWorkFactory(uow=uow), disc_resolver)
-        # file_path is disc 1 (not an m3u) → default resolves to disc 1.
-        assert resolver.do_scan_installed_paths() == {1: _DISC1_PATH}
-
-    def test_scan_installed_paths_maps_an_unlaunchable_install_to_the_empty_path(self, disc_resolver):
-        # The ROM stays IN the map — it IS downloaded, and collapse_sibling_groups
-        # reads the key set to pick a group's representative — but carries no
-        # launch path, so build_shortcuts_data emits the empty launch command (#1652).
-        uow = FakeUnitOfWork()
-        _seed_multi_disc(uow, rom_id=1, selected_disc=_DISC2, launchable=False)
-        resolver = self._launch_resolver(FakeUnitOfWorkFactory(uow=uow), disc_resolver)
-        assert resolver.do_scan_installed_paths() == {1: ""}
-
-    def test_read_installed_paths_maps_an_unlaunchable_install_to_the_empty_path(self, disc_resolver):
-        uow = FakeUnitOfWork()
-        _seed_multi_disc(uow, rom_id=1, selected_disc=_DISC2, launchable=False)
-        resolver = self._launch_resolver(FakeUnitOfWorkFactory(uow=uow), disc_resolver)
-        assert resolver.do_read_installed_paths({1}) == {1: ""}
 
 
 # ── install-recorder bake site ───────────────────────────────────────────

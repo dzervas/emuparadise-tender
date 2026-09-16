@@ -1,13 +1,6 @@
 import { FC, useCallback, useEffect, useState } from "react";
-import { ButtonItem, PanelSection, PanelSectionRow, TextField } from "@decky/ui";
-import {
-  getSrmStatus,
-  listCatalogueEntries,
-  updateSrmLibrary,
-  startDownload,
-  removeRom,
-  importRommCatalogueEntry,
-} from "../api/backend";
+import { ButtonItem, PanelSection, PanelSectionRow } from "@decky/ui";
+import { getSrmStatus, listCatalogueEntries, updateSrmLibrary, startDownload, removeRom } from "../api/backend";
 import type { CatalogueItem, SrmStatus } from "../api/backend";
 import { readRunningApps } from "../utils/runningApps";
 
@@ -16,7 +9,6 @@ export const EmudeckLibrary: FC<{ revision: number }> = ({ revision }) => {
   const [items, setItems] = useState<CatalogueItem[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const selected = items.find((item) => item.rom_id === selectedId) || null;
-  const [rommId, setRommId] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [message, setMessage] = useState("");
@@ -24,7 +16,7 @@ export const EmudeckLibrary: FC<{ revision: number }> = ({ revision }) => {
     () =>
       getSrmStatus().then(async (next) => {
         setStatus(next);
-        if (next.enabled) setItems((await listCatalogueEntries()).items);
+        setItems((await listCatalogueEntries()).items);
       }),
     [],
   );
@@ -38,37 +30,13 @@ export const EmudeckLibrary: FC<{ revision: number }> = ({ revision }) => {
       .catch((error) => setMessage(String(error)))
       .finally(() => setBusy(false));
   };
-  if (!status?.enabled) return null;
+  if (!status) return null;
   const disabled = busy || status.busy;
   return (
-    <PanelSection title="EmuDeck library">
+    <PanelSection title="Installed games">
       <PanelSectionRow>
         <ButtonItem layout="below" disabled={disabled} onClick={() => run(refresh)}>
           Refresh library and SRM status
-        </ButtonItem>
-      </PanelSectionRow>
-      <PanelSectionRow>
-        <TextField
-          label="RomM ROM ID (optional)"
-          value={rommId}
-          disabled={disabled}
-          onChange={(event) => setRommId(event.target.value)}
-        />
-      </PanelSectionRow>
-      <PanelSectionRow>
-        <ButtonItem
-          layout="below"
-          disabled={disabled || !/^\d+$/.test(rommId)}
-          onClick={() =>
-            run(async () => {
-              const result = await importRommCatalogueEntry(Number(rommId));
-              setMessage(
-                result.success ? "RomM game imported. Select it below to download." : result.message || "Import failed",
-              );
-            })
-          }
-        >
-          Import RomM game
         </ButtonItem>
       </PanelSectionRow>
       {items.map((item) => (
@@ -124,43 +92,47 @@ export const EmudeckLibrary: FC<{ revision: number }> = ({ revision }) => {
           </PanelSectionRow>
         </>
       )}
-      <PanelSectionRow>
-        <ButtonItem
-          layout="below"
-          disabled={disabled || !status.ready}
-          description="Runs all enabled SRM parsers, including games outside Tender. Game Mode closes temporarily and returns when finished."
-          onClick={() => setConfirm(true)}
-        >
-          Update Steam library and restart
-        </ButtonItem>
-      </PanelSectionRow>
-      {confirm && (
+      {status.enabled && (
         <>
           <PanelSectionRow>
             <ButtonItem
               layout="below"
-              disabled={disabled}
-              onClick={() =>
-                run(async () => {
-                  setConfirm(false);
-                  const running = readRunningApps();
-                  if (running.apps.length || running.diagnostics !== "SteamUIStore.RunningApps=empty")
-                    throw new Error(
-                      "Close running games and wait for Steam to report an idle session before restarting Game Mode",
-                    );
-                  const result = await updateSrmLibrary();
-                  setMessage(result.message || (result.success ? "Restarting Game Mode" : "Update failed"));
-                })
-              }
+              disabled={disabled || !status.ready}
+              description="Runs all enabled SRM parsers, including games outside Tender. Game Mode closes temporarily and returns when finished."
+              onClick={() => setConfirm(true)}
             >
-              Confirm library update and restart now
+              Update Steam library and restart
             </ButtonItem>
           </PanelSectionRow>
-          <PanelSectionRow>
-            <ButtonItem layout="below" onClick={() => setConfirm(false)}>
-              Cancel restart
-            </ButtonItem>
-          </PanelSectionRow>
+          {confirm && (
+            <>
+              <PanelSectionRow>
+                <ButtonItem
+                  layout="below"
+                  disabled={disabled}
+                  onClick={() =>
+                    run(async () => {
+                      setConfirm(false);
+                      const running = readRunningApps();
+                      if (running.apps.length || running.diagnostics !== "SteamUIStore.RunningApps=empty")
+                        throw new Error(
+                          "Close running games and wait for Steam to report an idle session before restarting Game Mode",
+                        );
+                      const result = await updateSrmLibrary();
+                      setMessage(result.message || (result.success ? "Restarting Game Mode" : "Update failed"));
+                    })
+                  }
+                >
+                  Confirm library update and restart now
+                </ButtonItem>
+              </PanelSectionRow>
+              <PanelSectionRow>
+                <ButtonItem layout="below" onClick={() => setConfirm(false)}>
+                  Cancel restart
+                </ButtonItem>
+              </PanelSectionRow>
+            </>
+          )}
         </>
       )}
       {(message || status.message || status.job?.message) && (

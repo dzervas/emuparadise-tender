@@ -26,6 +26,8 @@ class PublicPage(HTMLParser):
             values["text"] = ""
             self.links.append(values)
             self._link = values
+        elif tag == "img" and self._link is not None:
+            self._link["image"] = values.get("data-src") or values.get("src", "")
         elif tag == "form":
             self._form = {}
             self.forms.append((values, self._form))

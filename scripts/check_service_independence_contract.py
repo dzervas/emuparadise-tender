@@ -51,7 +51,8 @@ _NON_SERVICE_DIRS = {"protocols"}
 
 # Services deliberately excluded from the independence contract. Empty today;
 # add an entry only as a conscious decision (see the module docstring).
-EXEMPT: set[str] = set()
+# Shared extraction helper used by DownloadService, not an independently wired service.
+EXEMPT: set[str] = {"services.archive_install"}
 
 
 def derive_services(services_dir: Path) -> set[str]:

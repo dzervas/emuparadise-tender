@@ -2,5 +2,9 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "ignoreDeprecations": "6.0"
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "src/**/__eslint_fixtures__"
+  ]
 }

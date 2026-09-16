@@ -82,7 +82,6 @@ ALLOWLIST = {
     # on ``get_platforms`` was deleted once it was established that nothing read
     # it, which banked 65 lines. Reclaimed rather than left as headroom, because
     # headroom nobody has argued for is how a ceiling stops meaning anything.
-    "py_modules/services/library/fetcher.py": 1085,
 }
 
 
