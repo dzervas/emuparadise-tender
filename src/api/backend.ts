@@ -145,3 +145,25 @@ export const getCatalogueDownloads = callable<
 export const getCatalogueArtwork = callable<[string], { cover_url?: string | null }>("get_catalogue_artwork");
 
 export const downloadLatestRelease = callable<[], { success: boolean; message?: string }>("download_latest_release");
+
+
+export interface EdenLobby {
+  name: string;
+  players: number;
+  max_players: number | null;
+  has_password: boolean;
+}
+
+export interface EdenStatus {
+  running: boolean;
+  pid?: number;
+  game_name: string | null;
+  rom_path: string | null;
+  title_id: string | null;
+  lobby_count: number;
+  lobbies: EdenLobby[];
+  total_lobbies: number;
+  lobby_error?: string | null;
+}
+
+export const getEdenStatus = callable<[], EdenStatus>("get_eden_status");
