@@ -65,7 +65,7 @@ export function EdenPage({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 5000);
+    const timer = window.setInterval(() => void refresh(), 30_000);
     return () => window.clearInterval(timer);
   }, [refresh]);
 
