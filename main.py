@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import re
+import subprocess
 import sys
 import urllib.request
 from pathlib import Path
@@ -326,6 +327,58 @@ class Plugin:
 
         return matched, len(rooms)
 
+    @staticmethod
+    def _eden_environment(pid: int) -> dict[str, str]:
+        """Build an xdotool environment from the running Eden process."""
+
+        env = os.environ.copy()
+        try:
+            raw = Path(f"/proc/{pid}/environ").read_bytes()
+            for item in raw.split(b"\0"):
+                if b"=" not in item:
+                    continue
+                key, value = item.split(b"=", 1)
+                name = key.decode(errors="replace")
+                if name in {"DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR"}:
+                    env[name] = value.decode(errors="replace")
+        except (OSError, PermissionError):
+            pass
+        return env
+
+    async def send_eden_hotkey(self, key: str) -> dict[str, Any]:
+        allowed = {"b", "c", "l", "n", "r", "comma", "period"}
+        if key not in allowed:
+            return {"success": False, "message": "Unsupported Eden hotkey"}
+
+        process = await self.loop.run_in_executor(None, self._eden_process)
+        if process is None:
+            return {"success": False, "message": "Eden is not running"}
+
+        pid, _ = process
+        env = self._eden_environment(pid)
+
+        def send() -> dict[str, Any]:
+            try:
+                result = subprocess.run(
+                    ["xdotool", "key", "--clearmodifiers", f"ctrl+{key}"],
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                    check=False,
+                )
+            except FileNotFoundError:
+                return {"success": False, "message": "xdotool is not installed"}
+            except subprocess.TimeoutExpired:
+                return {"success": False, "message": "xdotool timed out"}
+
+            if result.returncode != 0:
+                message = (result.stderr or result.stdout or "xdotool failed").strip()
+                return {"success": False, "message": message}
+            return {"success": True, "message": ""}
+
+        return await self.loop.run_in_executor(None, send)
+
     async def get_eden_status(self) -> dict[str, Any]:
         process = await self.loop.run_in_executor(None, self._eden_process)
         if process is None:
@@ -362,3 +415,5 @@ class Plugin:
             "total_lobbies": total,
             "lobby_error": lobby_error,
         }
+
+
