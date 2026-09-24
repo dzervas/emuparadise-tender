@@ -22,6 +22,7 @@ from lib.installation_gate import installation_restart_blocked, srm_update_block
 class Plugin:
     _installation_restart_required = False
     _srm_mutations = 0
+    _eden_cached_process: tuple[int, list[str]] | None = None
 
     async def _main(self):
         self.loop = asyncio.get_running_loop()
@@ -224,8 +225,13 @@ class Plugin:
 
     @classmethod
     def _eden_process(cls) -> tuple[int, list[str]] | None:
-        """Return the running Eden process, preferring the child that owns the ROM."""
+        """Return the running Eden process, caching it until that PID exits."""
 
+        cached = cls._eden_cached_process
+        if cached is not None and Path(f"/proc/{cached[0]}").exists():
+            return cached
+
+        cls._eden_cached_process = None
         candidates: list[tuple[int, list[str]]] = []
         for proc in Path("/proc").iterdir():
             if not proc.name.isdigit():
@@ -254,7 +260,10 @@ class Plugin:
 
         if not candidates:
             return None
-        return next((candidate for candidate in candidates if cls._eden_rom_from_argv(candidate[1])), candidates[0])
+
+        chosen = next((candidate for candidate in candidates if cls._eden_rom_from_argv(candidate[1])), candidates[0])
+        cls._eden_cached_process = chosen
+        return chosen
 
     @staticmethod
     def _eden_rom_from_argv(argv: list[str]) -> str | None:
@@ -315,11 +324,12 @@ class Plugin:
                 and preferred_name not in {"any", "any game", "all games", "all games welcome", "switch games"}
                 and (preferred_name in rom_name or rom_name in preferred_name)
             )
-            if id_matches or name_matches:
+            players = len(room.get("players", [])) if isinstance(room.get("players"), list) else 0
+            if (id_matches or name_matches) and players > 0:
                 matched.append(
                     {
                         "name": str(room.get("name", "Unnamed room")),
-                        "players": len(room.get("players", [])) if isinstance(room.get("players"), list) else 0,
+                        "players": players,
                         "max_players": room.get("maxPlayers"),
                         "has_password": bool(room.get("hasPassword", False)),
                     }
