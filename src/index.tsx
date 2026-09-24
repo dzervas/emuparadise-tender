@@ -15,7 +15,7 @@ import { collapseQamOnDismount } from "./utils/qamExpansion";
 import type { DownloadProgressEvent, DownloadCompleteEvent, DownloadFailedEvent } from "./types";
 
 let currentPage = "main";
-let lastEdenLobbyState: { game: string; count: number } | null = null;
+let edenLobbySession: { pid: number | null; game: string; notified: boolean } | null = null;
 function Tender() {
   const [page, setPage] = useState(currentPage);
   const [busy, setBusy] = useState(false);
@@ -103,20 +103,30 @@ export default definePlugin(() => {
     try {
       const status = await getEdenStatus();
       if (!status.running || !status.game_name) {
-        lastEdenLobbyState = null;
+        edenLobbySession = null;
         return;
       }
 
-      const previous = lastEdenLobbyState;
-      if (
-        status.lobby_count > 0 &&
-        (previous === null || previous.game !== status.game_name || status.lobby_count > previous.count)
-      ) {
+      const pid = status.pid ?? null;
+      const isNewSession =
+        edenLobbySession === null ||
+        edenLobbySession.pid !== pid ||
+        edenLobbySession.game !== status.game_name;
+
+      if (isNewSession) {
+        edenLobbySession = {
+          pid,
+          game: status.game_name,
+          notified: false,
+        };
+      }
+
+      if (status.lobby_count > 0 && !edenLobbySession.notified) {
         showToast(
           `${status.lobby_count} Eden public room${status.lobby_count === 1 ? "" : "s"} open for ${status.game_name}`,
         );
+        edenLobbySession.notified = true;
       }
-      lastEdenLobbyState = { game: status.game_name, count: status.lobby_count };
     } catch (cause) {
       // Lobby availability is an optional convenience; don't surface transient
       // network/process-probe failures as user-facing errors.
