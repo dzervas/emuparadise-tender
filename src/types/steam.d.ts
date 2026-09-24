@@ -1,4 +1,7 @@
 declare var SteamClient: {
+  Input: {
+    ControllerKeyboardSetKeyState(key: number, state: boolean): void;
+  };
   Apps: {
     AddShortcut(appName: string, exePath: string, startDir: string, launchArgs: string): Promise<number>;
     RemoveShortcut(appId: number): void;
