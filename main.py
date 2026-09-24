@@ -1,7 +1,11 @@
 import asyncio
 import base64
+import json
 import os
+import re
 import sys
+import urllib.request
+from pathlib import Path
 from typing import Any
 
 plugin_dir = os.path.dirname(__file__)
@@ -216,3 +220,141 @@ class Plugin:
 
     async def get_catalogue_downloads(self, catalogue_url: str) -> dict[str, Any]:
         return await self._catalogue_service.downloads_for(catalogue_url)
+
+    @staticmethod
+    def _eden_process() -> tuple[int, list[str]] | None:
+        """Return the running Eden PID and argv, if any."""
+
+        for proc in Path("/proc").iterdir():
+            if not proc.name.isdigit():
+                continue
+            try:
+                raw = (proc / "cmdline").read_bytes()
+                if not raw:
+                    continue
+                argv = [part.decode(errors="replace") for part in raw.rstrip(b"\0").split(b"\0")]
+                command = os.path.basename(argv[0]).lower()
+                try:
+                    executable = os.path.basename(os.readlink(proc / "exe")).lower()
+                except OSError:
+                    executable = ""
+            except (OSError, PermissionError):
+                continue
+
+            if (
+                command in {"eden", "eden-cli"}
+                or command.startswith("eden-")
+                or "eden.appimage" in command
+                or executable in {"eden", "eden-cli"}
+                or executable.startswith("eden-")
+            ):
+                return int(proc.name), argv
+        return None
+
+    @staticmethod
+    def _eden_rom_from_argv(argv: list[str]) -> str | None:
+        extensions = {".xci", ".nsp", ".nca", ".nro", ".nso"}
+        for index, arg in enumerate(argv[:-1]):
+            if arg in {"-g", "--game"}:
+                candidate = argv[index + 1]
+                if Path(candidate).suffix.lower() in extensions:
+                    return candidate
+        for arg in reversed(argv[1:]):
+            if Path(arg).suffix.lower() in extensions:
+                return arg
+        return None
+
+    @staticmethod
+    def _normalise_switch_title(value: str) -> str:
+        value = re.sub(r"\[[^\]]*\]|\([^)]*\)", " ", value)
+        value = re.sub(r"[^a-z0-9]+", " ", value.casefold())
+        return " ".join(value.split())
+
+    @classmethod
+    def _eden_title_id(cls, rom_path: str | None) -> int | None:
+        if not rom_path:
+            return None
+        match = re.search(r"(?i)(?:^|[^0-9a-f])(01[0-9a-f]{14})(?:[^0-9a-f]|$)", Path(rom_path).stem)
+        return int(match.group(1), 16) if match else None
+
+    @classmethod
+    def _eden_lobbies_for_game(cls, rom_path: str | None) -> tuple[list[dict[str, Any]], int]:
+        if not rom_path:
+            return [], 0
+
+        request = urllib.request.Request(
+            "https://api.ynet-fun.xyz/lobby",
+            headers={"User-Agent": "Tender/0.33 Eden lobby checker"},
+        )
+        with urllib.request.urlopen(request, timeout=5, context=_system_ssl_context()) as response:
+            payload = json.load(response)
+
+        rooms = payload.get("rooms", [])
+        if not isinstance(rooms, list):
+            return [], 0
+
+        title_id = cls._eden_title_id(rom_path)
+        rom_name = cls._normalise_switch_title(Path(rom_path).stem)
+        matched: list[dict[str, Any]] = []
+
+        for room in rooms:
+            if not isinstance(room, dict):
+                continue
+            preferred_id = room.get("preferredGameId")
+            preferred_name = cls._normalise_switch_title(str(room.get("preferredGameName", "")))
+
+            id_matches = title_id is not None and preferred_id == title_id
+            name_matches = bool(
+                rom_name
+                and preferred_name
+                and preferred_name not in {"any", "any game", "all games", "all games welcome", "switch games"}
+                and (preferred_name in rom_name or rom_name in preferred_name)
+            )
+            if id_matches or name_matches:
+                matched.append(
+                    {
+                        "name": str(room.get("name", "Unnamed room")),
+                        "players": len(room.get("players", [])) if isinstance(room.get("players"), list) else 0,
+                        "max_players": room.get("maxPlayers"),
+                        "has_password": bool(room.get("hasPassword", False)),
+                    }
+                )
+
+        return matched, len(rooms)
+
+    async def get_eden_status(self) -> dict[str, Any]:
+        process = await self.loop.run_in_executor(None, self._eden_process)
+        if process is None:
+            return {
+                "running": False,
+                "game_name": None,
+                "rom_path": None,
+                "title_id": None,
+                "lobby_count": 0,
+                "lobbies": [],
+                "total_lobbies": 0,
+            }
+
+        pid, argv = process
+        rom_path = self._eden_rom_from_argv(argv)
+        game_name = Path(rom_path).stem if rom_path else None
+        title_id = self._eden_title_id(rom_path)
+        try:
+            lobbies, total = await self.loop.run_in_executor(None, self._eden_lobbies_for_game, rom_path)
+            lobby_error = None
+        except Exception as exc:
+            decky.logger.warning("Could not query Eden public lobbies: %s", exc)
+            lobbies, total = [], 0
+            lobby_error = str(exc)
+
+        return {
+            "running": True,
+            "pid": pid,
+            "game_name": game_name,
+            "rom_path": rom_path,
+            "title_id": f"{title_id:016X}" if title_id is not None else None,
+            "lobby_count": len(lobbies),
+            "lobbies": lobbies,
+            "total_lobbies": total,
+            "lobby_error": lobby_error,
+        }
