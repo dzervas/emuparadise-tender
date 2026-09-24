@@ -28,6 +28,13 @@ function sendEdenHotkey(key: EdenKey): void {
       SteamClient.Input.ControllerKeyboardSetKeyState(HID[key], false);
       SteamClient.Input.ControllerKeyboardSetKeyState(HID.LControl, false);
     } catch (cause) {
+      // Best effort: never leave Ctrl held if Steam rejects part of the sequence.
+      try {
+        SteamClient.Input.ControllerKeyboardSetKeyState(HID[key], false);
+        SteamClient.Input.ControllerKeyboardSetKeyState(HID.LControl, false);
+      } catch {
+        // Nothing else to recover here.
+      }
       console.error("Tender: failed to send Eden hotkey", cause);
       showToast("Could not send Eden shortcut");
     }
@@ -85,11 +92,6 @@ export function EdenPage({ onBack }: { onBack: () => void }) {
       </PanelSectionRow>
 
       <PanelSectionRow>
-        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("B")}>
-          Browse library
-        </ButtonItem>
-      </PanelSectionRow>
-      <PanelSectionRow>
         <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("Comma")}>
           Configure Eden
         </ButtonItem>
@@ -106,6 +108,11 @@ export function EdenPage({ onBack }: { onBack: () => void }) {
 
       <PanelSectionRow>
         <div style={{ fontWeight: 600, marginTop: 8 }}>Multiplayer</div>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("B")}>
+          {status?.lobby_count ? `Browse public lobbies (${status.lobby_count})` : "Browse public lobbies"}
+        </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
         <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("N")}>
