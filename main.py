@@ -221,10 +221,11 @@ class Plugin:
     async def get_catalogue_downloads(self, catalogue_url: str) -> dict[str, Any]:
         return await self._catalogue_service.downloads_for(catalogue_url)
 
-    @staticmethod
-    def _eden_process() -> tuple[int, list[str]] | None:
-        """Return the running Eden PID and argv, if any."""
+    @classmethod
+    def _eden_process(cls) -> tuple[int, list[str]] | None:
+        """Return the running Eden process, preferring the child that owns the ROM."""
 
+        candidates: list[tuple[int, list[str]]] = []
         for proc in Path("/proc").iterdir():
             if not proc.name.isdigit():
                 continue
@@ -248,8 +249,11 @@ class Plugin:
                 or executable in {"eden", "eden-cli"}
                 or executable.startswith("eden-")
             ):
-                return int(proc.name), argv
-        return None
+                candidates.append((int(proc.name), argv))
+
+        if not candidates:
+            return None
+        return next((candidate for candidate in candidates if cls._eden_rom_from_argv(candidate[1])), candidates[0])
 
     @staticmethod
     def _eden_rom_from_argv(argv: list[str]) -> str | None:
