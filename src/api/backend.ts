@@ -167,3 +167,9 @@ export interface EdenStatus {
 }
 
 export const getEdenStatus = callable<[], EdenStatus>("get_eden_status");
+
+
+export const sendEdenHotkey = callable<
+  [string],
+  { success: boolean; message: string }
+>("send_eden_hotkey");
