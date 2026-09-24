@@ -4,7 +4,8 @@ import { ButtonItem, PanelSection, PanelSectionRow, Focusable } from "@decky/ui"
 import { FaGamepad } from "react-icons/fa";
 import { CataloguePage } from "./components/CataloguePage";
 import { DownloadQueue } from "./components/DownloadQueue";
-import { downloadLatestRelease, logError } from "./api/backend";
+import { EdenPage } from "./components/EdenPage";
+import { downloadLatestRelease, getEdenStatus, logError } from "./api/backend";
 import { showToast } from "./utils/toast";
 import { updateDownload, getDownloadState, removeDownload } from "./utils/downloadStore";
 import { handleGlobalDownloadFailure } from "./utils/downloadFailure";
@@ -14,6 +15,7 @@ import { collapseQamOnDismount } from "./utils/qamExpansion";
 import type { DownloadProgressEvent, DownloadCompleteEvent, DownloadFailedEvent } from "./types";
 
 let currentPage = "main";
+let lastEdenLobbyState: { game: string; count: number } | null = null;
 function Tender() {
   const [page, setPage] = useState(currentPage);
   const [busy, setBusy] = useState(false);
@@ -35,6 +37,12 @@ function Tender() {
         <DownloadQueue onBack={() => navigate("main")} />
       </Focusable>
     );
+  if (page === "eden")
+    return (
+      <Focusable onCancelButton={() => navigate("main")}>
+        <EdenPage onBack={() => navigate("main")} />
+      </Focusable>
+    );
   return (
     <PanelSection>
       <PanelSectionRow>
@@ -45,6 +53,11 @@ function Tender() {
       <PanelSectionRow>
         <ButtonItem layout="below" onClick={() => navigate("downloads")}>
           Downloads
+        </ButtonItem>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={() => navigate("eden")}>
+          Eden
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
@@ -86,6 +99,34 @@ function Tender() {
   );
 }
 export default definePlugin(() => {
+  const checkEdenLobbies = async () => {
+    try {
+      const status = await getEdenStatus();
+      if (!status.running || !status.game_name) {
+        lastEdenLobbyState = null;
+        return;
+      }
+
+      const previous = lastEdenLobbyState;
+      if (
+        status.lobby_count > 0 &&
+        (previous === null || previous.game !== status.game_name || status.lobby_count > previous.count)
+      ) {
+        showToast(
+          `${status.lobby_count} Eden public room${status.lobby_count === 1 ? "" : "s"} open for ${status.game_name}`,
+        );
+      }
+      lastEdenLobbyState = { game: status.game_name, count: status.lobby_count };
+    } catch (cause) {
+      // Lobby availability is an optional convenience; don't surface transient
+      // network/process-probe failures as user-facing errors.
+      console.debug("Tender: Eden lobby check failed", cause);
+    }
+  };
+
+  void checkEdenLobbies();
+  const edenLobbyTimer = window.setInterval(() => void checkEdenLobbies(), 60_000);
+
   const downloadProgressListener = addEventListener<[DownloadProgressEvent]>(
     "download_progress",
     (data: DownloadProgressEvent) => {
@@ -170,6 +211,7 @@ export default definePlugin(() => {
       removeEventListener("download_progress", downloadProgressListener);
       removeEventListener("download_complete", downloadCompleteListener);
       removeEventListener("download_failed", downloadFailedListener);
+      window.clearInterval(edenLobbyTimer);
       collapseQamOnDismount();
     },
   };
