@@ -1,44 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
 import { ButtonItem, Navigation, PanelSection, PanelSectionRow } from "@decky/ui";
-import { getEdenStatus, type EdenStatus } from "../api/backend";
+import { getEdenStatus, sendEdenHotkey as sendEdenHotkeyBackend, type EdenStatus } from "../api/backend";
 import { showToast } from "../utils/toast";
 
-const HID = {
-  B: 5,
-  C: 6,
-  L: 15,
-  N: 17,
-  R: 21,
-  Comma: 54,
-  Period: 55,
-  LControl: 224,
-} as const;
-
-type EdenKey = keyof Pick<typeof HID, "B" | "C" | "L" | "N" | "R" | "Comma" | "Period">;
+type EdenKey = "b" | "c" | "l" | "n" | "r" | "comma" | "period";
 
 function sendEdenHotkey(key: EdenKey): void {
   Navigation.CloseSideMenus();
 
-  // Give Gamescope/SteamUI a moment to return keyboard focus to Eden after QAM
-  // closes, then inject the exact shortcut Eden already handles itself.
+  // xdotool has already been verified to reach Eden under Gamescope. Run it
+  // after QAM has closed so Eden is the active X11/XWayland target again.
   window.setTimeout(() => {
-    try {
-      SteamClient.Input.ControllerKeyboardSetKeyState(HID.LControl, true);
-      SteamClient.Input.ControllerKeyboardSetKeyState(HID[key], true);
-      SteamClient.Input.ControllerKeyboardSetKeyState(HID[key], false);
-      SteamClient.Input.ControllerKeyboardSetKeyState(HID.LControl, false);
-    } catch (cause) {
-      // Best effort: never leave Ctrl held if Steam rejects part of the sequence.
-      try {
-        SteamClient.Input.ControllerKeyboardSetKeyState(HID[key], false);
-        SteamClient.Input.ControllerKeyboardSetKeyState(HID.LControl, false);
-      } catch {
-        // Nothing else to recover here.
-      }
-      console.error("Tender: failed to send Eden hotkey", cause);
-      showToast("Could not send Eden shortcut");
-    }
-  }, 150);
+    void sendEdenHotkeyBackend(key)
+      .then((result) => {
+        if (!result.success) {
+          console.error("Tender: Eden hotkey failed", result.message);
+          showToast(result.message || "Could not send Eden shortcut");
+        }
+      })
+      .catch((cause) => {
+        console.error("Tender: Eden hotkey failed", cause);
+        showToast("Could not send Eden shortcut");
+      });
+  }, 250);
 }
 
 function lobbySummary(status: EdenStatus): string {
@@ -92,7 +76,7 @@ export function EdenPage({ onBack }: { onBack: () => void }) {
       </PanelSectionRow>
 
       <PanelSectionRow>
-        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("Comma")}>
+        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("comma")}>
           Configure Eden
         </ButtonItem>
       </PanelSectionRow>
@@ -100,7 +84,7 @@ export function EdenPage({ onBack }: { onBack: () => void }) {
         <ButtonItem
           layout="below"
           disabled={!status?.running || !status?.game_name}
-          onClick={() => sendEdenHotkey("Period")}
+          onClick={() => sendEdenHotkey("period")}
         >
           Configure current game
         </ButtonItem>
@@ -110,27 +94,27 @@ export function EdenPage({ onBack }: { onBack: () => void }) {
         <div style={{ fontWeight: 600, marginTop: 8 }}>Multiplayer</div>
       </PanelSectionRow>
       <PanelSectionRow>
-        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("B")}>
+        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("b")}>
           {status?.lobby_count ? `Browse public lobbies (${status.lobby_count})` : "Browse public lobbies"}
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
-        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("N")}>
+        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("n")}>
           Create room
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
-        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("R")}>
+        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("r")}>
           Show current room
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
-        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("C")}>
+        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("c")}>
           Direct connect
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
-        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("L")}>
+        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("l")}>
           Leave room
         </ButtonItem>
       </PanelSectionRow>
