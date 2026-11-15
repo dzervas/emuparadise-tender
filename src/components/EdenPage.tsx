@@ -65,27 +65,19 @@ export function EdenPage({ onBack }: { onBack: () => void }) {
         <div>
           <div style={{ fontWeight: 600 }}>Eden</div>
           <div style={{ opacity: 0.75 }}>
-            {loading
-              ? "Checking…"
-              : status?.running
-                ? status.game_name || "Running"
-                : "Not running"}
+            {loading ? "Checking…" : status?.running ? status.game_name || "Running" : "Not detected"}
           </div>
           {status?.running && <div style={{ opacity: 0.75 }}>{lobbySummary(status)}</div>}
         </div>
       </PanelSectionRow>
 
       <PanelSectionRow>
-        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("comma")}>
+        <ButtonItem layout="below" onClick={() => sendEdenHotkey("comma")}>
           Configure Eden
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
-        <ButtonItem
-          layout="below"
-          disabled={!status?.running || !status?.game_name}
-          onClick={() => sendEdenHotkey("period")}
-        >
+        <ButtonItem layout="below" onClick={() => sendEdenHotkey("period")}>
           Configure current game
         </ButtonItem>
       </PanelSectionRow>
@@ -94,27 +86,27 @@ export function EdenPage({ onBack }: { onBack: () => void }) {
         <div style={{ fontWeight: 600, marginTop: 8 }}>Multiplayer</div>
       </PanelSectionRow>
       <PanelSectionRow>
-        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("b")}>
+        <ButtonItem layout="below" onClick={() => sendEdenHotkey("b")}>
           {status?.lobby_count ? `Browse public lobbies (${status.lobby_count})` : "Browse public lobbies"}
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
-        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("n")}>
+        <ButtonItem layout="below" onClick={() => sendEdenHotkey("n")}>
           Create room
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
-        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("r")}>
+        <ButtonItem layout="below" onClick={() => sendEdenHotkey("r")}>
           Show current room
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
-        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("c")}>
+        <ButtonItem layout="below" onClick={() => sendEdenHotkey("c")}>
           Direct connect
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
-        <ButtonItem layout="below" disabled={!status?.running} onClick={() => sendEdenHotkey("l")}>
+        <ButtonItem layout="below" onClick={() => sendEdenHotkey("l")}>
           Leave room
         </ButtonItem>
       </PanelSectionRow>

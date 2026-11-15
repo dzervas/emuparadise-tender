@@ -361,11 +361,9 @@ class Plugin:
             return {"success": False, "message": "Unsupported Eden hotkey"}
 
         process = await self.loop.run_in_executor(None, self._eden_process)
-        if process is None:
-            return {"success": False, "message": "Eden is not running"}
-
-        pid, _ = process
-        env = self._eden_environment(pid)
+        # Detection supplies display details when available, but forks may not
+        # be recognized. Still send the shortcut to the active session.
+        env = self._eden_environment(process[0]) if process else os.environ.copy()
 
         def send() -> dict[str, Any]:
             try:
